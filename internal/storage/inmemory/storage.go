@@ -6,13 +6,13 @@ import (
 )
 
 type Storage struct {
-	mu   *sync.RWMutex
+	mu   sync.RWMutex
 	data map[string]string
 }
 
 func New() *Storage {
 	return &Storage{
-		mu:   &sync.RWMutex{},
+		mu:   sync.RWMutex{},
 		data: make(map[string]string),
 	}
 }

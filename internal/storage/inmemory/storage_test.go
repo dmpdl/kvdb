@@ -36,7 +36,7 @@ func TestStorage_Get(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Создаем хранилище с тестовыми данными
 			storage := &Storage{
-				mu:   &sync.RWMutex{},
+				mu:   sync.RWMutex{},
 				data: tt.data,
 			}
 
@@ -78,7 +78,7 @@ func TestStorage_Set(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Создаем хранилище с тестовыми данными
 			storage := &Storage{
-				mu:   &sync.RWMutex{},
+				mu:   sync.RWMutex{},
 				data: tt.initialData,
 			}
 
@@ -116,7 +116,7 @@ func TestStorage_Del(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Создаем хранилище с тестовыми данными
 			storage := &Storage{
-				mu:   &sync.RWMutex{},
+				mu:   sync.RWMutex{},
 				data: tt.initialData,
 			}
 
