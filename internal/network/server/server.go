@@ -47,52 +47,54 @@ func New(logger *zap.Logger, listener net.Listener) *TCPServer {
 	}
 }
 
-func (n *TCPServer) WithMaxConn(maxConn int) *TCPServer {
-	n.opts.maxConn = maxConn
-	return n
+func (s *TCPServer) WithMaxConn(maxConn int) *TCPServer {
+	s.opts.maxConn = maxConn
+	return s
 }
 
-func (n *TCPServer) WithMaxMessageSize(maxMessageSizeBytes uint64) *TCPServer {
-	n.opts.maxMessageSizeBytes = maxMessageSizeBytes
-	return n
+func (s *TCPServer) WithMaxMessageSize(maxMessageSizeBytes uint64) *TCPServer {
+	s.opts.maxMessageSizeBytes = maxMessageSizeBytes
+	return s
 }
 
-func (n *TCPServer) WithIdleTimeout(idleTimeout time.Duration) *TCPServer {
-	n.opts.idleTimeout = idleTimeout
-	return n
+func (s *TCPServer) WithIdleTimeout(idleTimeout time.Duration) *TCPServer {
+	s.opts.idleTimeout = idleTimeout
+	return s
 }
 
-func (n *TCPServer) WithQueryHandleFunc(handler handleFunc) *TCPServer {
-	n.handler = handler
-	return n
+func (s *TCPServer) WithQueryHandleFunc(handler handleFunc) *TCPServer {
+	s.handler = handler
+	return s
 }
 
-func (n *TCPServer) Listen(ctx context.Context) {
+func (s *TCPServer) Listen(ctx context.Context) {
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 
 	go func() {
 		defer wg.Done()
-		n.listenLoop(ctx)
+		s.listenLoop(ctx)
 	}()
 
 	<-ctx.Done()
 
-	if err := n.listener.Close(); err != nil {
-		n.logger.Error(
+	if err := s.listener.Close(); err != nil {
+		s.logger.Error(
 			"failed to close listener",
-			zap.String("addr", n.listener.Addr().String()),
+			zap.String("addr", s.listener.Addr().String()),
 		)
 	}
 
 	wg.Wait()
 }
 
-func (n *TCPServer) listenLoop(ctx context.Context) {
-	n.logger.Info(
+func (s *TCPServer) listenLoop(ctx context.Context) {
+	s.logger.Info(
 		"start serve",
-		zap.String("addr", n.listener.Addr().String()),
+		zap.String("addr", s.listener.Addr().String()),
 	)
+
+	maxConnCh := make(chan struct{}, s.opts.maxConn)
 
 	for {
 		select {
@@ -101,28 +103,29 @@ func (n *TCPServer) listenLoop(ctx context.Context) {
 		default:
 		}
 
-		conn, err := n.listener.Accept()
+		conn, err := s.listener.Accept()
 		if err != nil {
-			n.logger.Error(
+			s.logger.Error(
 				"failed to accept conn",
-				zap.String("addr", n.listener.Addr().String()),
+				zap.String("addr", s.listener.Addr().String()),
 			)
 			continue
 		}
 
 		if err := conn.SetReadDeadline(
-			time.Now().Add(n.opts.idleTimeout)); err != nil {
-			n.logger.Error(
+			time.Now().Add(s.opts.idleTimeout)); err != nil {
+			s.logger.Error(
 				"failed set idle timeout",
-				zap.String("addr", n.listener.Addr().String()),
+				zap.String("addr", s.listener.Addr().String()),
 			)
 			continue
 		}
 
+		maxConnCh <- struct{}{}
 		go func() {
 			defer func() {
 				if err := recover(); err != nil {
-					n.logger.Error(
+					s.logger.Error(
 						"panic",
 						zap.String("conn", conn.LocalAddr().String()),
 						zap.Any("panic", err),
@@ -130,7 +133,9 @@ func (n *TCPServer) listenLoop(ctx context.Context) {
 				}
 			}()
 
-			n.handler(ctx, conn)
+			defer func() { <-maxConnCh }()
+
+			s.handler(ctx, conn)
 		}()
 	}
 }
