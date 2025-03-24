@@ -103,6 +103,8 @@ func (s *TCPServer) listenLoop(ctx context.Context) {
 		default:
 		}
 
+		maxConnCh <- struct{}{}
+
 		conn, err := s.listener.Accept()
 		if err != nil {
 			s.logger.Error(
@@ -121,7 +123,6 @@ func (s *TCPServer) listenLoop(ctx context.Context) {
 			continue
 		}
 
-		maxConnCh <- struct{}{}
 		go func() {
 			defer func() {
 				if err := recover(); err != nil {
