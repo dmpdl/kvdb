@@ -26,10 +26,15 @@ lint:
 	@echo "Running linter..."
 	golangci-lint run
 
-# Build and run the application
-run:
-	@echo "Building and running the application..."
+# Build and run the database
+run-database:
+	@echo "Building and running the database..."
 	$(GO) run cmd/server/main.go
+
+# Build and run the database client
+run-client:
+	@echo "Building and running database client..."
+	$(GO) run cmd/client/main.go
 
 # Clean up generated files
 clean:
@@ -38,4 +43,4 @@ clean:
 	$(GO) clean -testcache
 
 # Phony targets
-.PHONY: all test test-coverage test-race lint run clean
+.PHONY: all test test-coverage test-race lint run-database clean

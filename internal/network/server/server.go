@@ -92,9 +92,16 @@ func (s *TCPServer) listenLoop(ctx context.Context) {
 	s.logger.Info(
 		"start serve",
 		zap.String("addr", s.listener.Addr().String()),
+		zap.Int("max_conn", s.opts.maxConn),
+		zap.Uint64("max_message_size_bytes", s.opts.maxMessageSizeBytes),
+		zap.String("idle_timeout", s.opts.idleTimeout.String()),
 	)
 
-	maxConnCh := make(chan struct{}, s.opts.maxConn)
+	// Limit max concurrent connections.
+	var maxConnCh chan struct{}
+	if s.opts.maxConn > 0 {
+		maxConnCh = make(chan struct{}, s.opts.maxConn)
+	}
 
 	for {
 		select {
@@ -103,7 +110,9 @@ func (s *TCPServer) listenLoop(ctx context.Context) {
 		default:
 		}
 
-		maxConnCh <- struct{}{}
+		if maxConnCh != nil {
+			maxConnCh <- struct{}{}
+		}
 
 		conn, err := s.listener.Accept()
 		if err != nil {
@@ -123,20 +132,26 @@ func (s *TCPServer) listenLoop(ctx context.Context) {
 			continue
 		}
 
-		go func() {
-			defer func() {
-				if err := recover(); err != nil {
-					s.logger.Error(
-						"panic",
-						zap.String("conn", conn.LocalAddr().String()),
-						zap.Any("panic", err),
-					)
-				}
-			}()
-
-			defer func() { <-maxConnCh }()
-
-			s.handler(ctx, conn)
-		}()
+		go s.wrapConn(ctx, conn, maxConnCh)
 	}
+}
+
+func (s *TCPServer) wrapConn(ctx context.Context, conn net.Conn, maxConnCh chan struct{}) {
+	defer func() {
+		if err := recover(); err != nil {
+			s.logger.Error(
+				"panic",
+				zap.String("conn", conn.LocalAddr().String()),
+				zap.Any("panic", err),
+			)
+		}
+	}()
+
+	defer func() {
+		if maxConnCh != nil {
+			<-maxConnCh
+		}
+	}()
+
+	s.handler(ctx, conn)
 }

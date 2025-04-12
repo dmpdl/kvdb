@@ -52,10 +52,7 @@ func (c *TCPClient) Send(_ context.Context, request []byte) ([]byte, error) {
 		return []byte{}, fmt.Errorf("failed read conn: %w", err)
 	}
 
-	response := make([]byte, responseSize)
-	copy(response, responseBuf)
-
-	return response, nil
+	return responseBuf[:responseSize], nil
 }
 
 func (c *TCPClient) Close() error {
