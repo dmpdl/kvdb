@@ -1,5 +1,7 @@
 # KVDB
 
+In memory Key Value DB.
+
 ## Command
 ```
 query = set_command | get_command | del_command
@@ -38,3 +40,5 @@ logging:
 
 ## How to run
 `make all` - run test, lint code and run server with default config placed in `etc/server.yaml`.
+
+`make run-client` - start database client.

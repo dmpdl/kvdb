@@ -98,24 +98,23 @@ func (s *TCPServer) listenLoop(ctx context.Context) {
 	)
 
 	// Limit max concurrent connections.
-	var maxConnCh chan struct{}
-	if s.opts.maxConn > 0 {
-		maxConnCh = make(chan struct{}, s.opts.maxConn)
-	}
+	connLimiter := newConnectionLimiter(s.opts.maxConn)
+
+	wg := sync.WaitGroup{}
 
 	for {
 		select {
 		case <-ctx.Done():
+			wg.Wait()
 			return
 		default:
 		}
 
-		if maxConnCh != nil {
-			maxConnCh <- struct{}{}
-		}
+		connLimiter.Acquire()
 
 		conn, err := s.listener.Accept()
 		if err != nil {
+			connLimiter.Release()
 			s.logger.Error(
 				"failed to accept conn",
 				zap.String("addr", s.listener.Addr().String()),
@@ -124,7 +123,9 @@ func (s *TCPServer) listenLoop(ctx context.Context) {
 		}
 
 		if err := conn.SetReadDeadline(
-			time.Now().Add(s.opts.idleTimeout)); err != nil {
+			time.Now().Add(s.opts.idleTimeout),
+		); err != nil {
+			connLimiter.Release()
 			s.logger.Error(
 				"failed set idle timeout",
 				zap.String("addr", s.listener.Addr().String()),
@@ -132,11 +133,16 @@ func (s *TCPServer) listenLoop(ctx context.Context) {
 			continue
 		}
 
-		go s.wrapConn(ctx, conn, maxConnCh)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			s.wrapConn(ctx, conn, connLimiter)
+		}()
 	}
 }
 
-func (s *TCPServer) wrapConn(ctx context.Context, conn net.Conn, maxConnCh chan struct{}) {
+func (s *TCPServer) wrapConn(ctx context.Context, conn net.Conn, connLimiter *connectionLimiter) {
 	defer func() {
 		if err := recover(); err != nil {
 			s.logger.Error(
@@ -148,10 +154,37 @@ func (s *TCPServer) wrapConn(ctx context.Context, conn net.Conn, maxConnCh chan 
 	}()
 
 	defer func() {
-		if maxConnCh != nil {
-			<-maxConnCh
-		}
+		connLimiter.Release()
 	}()
 
 	s.handler(ctx, conn)
+}
+
+type connectionLimiter struct {
+	maxConn   int
+	maxConnCh chan struct{}
+}
+
+func newConnectionLimiter(maxConn int) *connectionLimiter {
+	var maxConnCh chan struct{}
+	if maxConn > 0 {
+		maxConnCh = make(chan struct{}, maxConn)
+	}
+
+	return &connectionLimiter{
+		maxConn:   maxConn,
+		maxConnCh: maxConnCh,
+	}
+}
+
+func (cl *connectionLimiter) Release() {
+	if cl.maxConnCh != nil {
+		<-cl.maxConnCh
+	}
+}
+
+func (cl *connectionLimiter) Acquire() {
+	if cl.maxConnCh != nil {
+		cl.maxConnCh <- struct{}{}
+	}
 }

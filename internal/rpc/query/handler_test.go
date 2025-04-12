@@ -102,7 +102,7 @@ func TestHandler_Handle_WriteError(t *testing.T) {
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
-		wg.Done()
+		defer wg.Done()
 		handler.Handle(ctx, serverConn)
 	}()
 

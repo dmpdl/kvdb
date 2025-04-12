@@ -14,6 +14,7 @@ import (
 
 // MockListener is a mock implementation of net.Listener for testing.
 type MockListener struct {
+	Mu         sync.Mutex
 	AcceptConn net.Conn
 	AcceptErr  error
 	CloseErr   error
@@ -25,6 +26,9 @@ func (m *MockListener) Accept() (net.Conn, error) {
 }
 
 func (m *MockListener) Close() error {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+
 	m.Closed = true
 	return m.CloseErr
 }
@@ -35,6 +39,7 @@ func (m *MockListener) Addr() net.Addr {
 
 // MockConn is a mock implementation of net.Conn for testing.
 type MockConn struct {
+	Mu          sync.Mutex
 	ReadBuffer  *bytes.Buffer
 	WriteBuffer *bytes.Buffer
 	Closed      bool
@@ -49,6 +54,9 @@ func (m *MockConn) Write(b []byte) (int, error) {
 }
 
 func (m *MockConn) Close() error {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+
 	m.Closed = true
 	return nil
 }
@@ -76,7 +84,9 @@ func (m *MockConn) SetWriteDeadline(_ time.Time) error {
 // TestNewTCPServer tests the creation of a new TCPServer with default options.
 func TestNewTCPServer(t *testing.T) {
 	logger := zaptest.NewLogger(t)
-	listener := &MockListener{}
+	listener := &MockListener{
+		Mu: sync.Mutex{},
+	}
 
 	server := New(logger, listener)
 
@@ -94,7 +104,9 @@ func TestNewTCPServer(t *testing.T) {
 // TestWithOptions tests setting custom options on the TCPServer.
 func TestWithOptions(t *testing.T) {
 	logger := zaptest.NewLogger(t)
-	listener := &MockListener{}
+	listener := &MockListener{
+		Mu: sync.Mutex{},
+	}
 
 	server := New(logger, listener).
 		WithMaxConn(200).
@@ -116,10 +128,12 @@ func TestWithOptions(t *testing.T) {
 func TestListenLoop(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 	mockConn := &MockConn{
+		Mu:          sync.Mutex{},
 		ReadBuffer:  bytes.NewBufferString("test query\n"),
 		WriteBuffer: new(bytes.Buffer),
 	}
 	listener := &MockListener{
+		Mu:         sync.Mutex{},
 		AcceptConn: mockConn,
 	}
 
@@ -136,14 +150,18 @@ func TestListenLoop(t *testing.T) {
 	}()
 
 	// Wait for the server to start
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(500 * time.Microsecond)
 
 	// Cancel the context to stop the server
 	cancel()
 	wg.Wait()
 
 	// Verify the connection was closed
-	if !mockConn.Closed {
+	mockConn.Mu.Lock()
+	isConnClosed := mockConn.Closed
+	defer mockConn.Mu.Unlock()
+
+	if !isConnClosed {
 		t.Error("Expected connection to be closed")
 	}
 }
@@ -152,6 +170,7 @@ func TestListenLoop(t *testing.T) {
 func TestListenLoop_AcceptError(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 	listener := &MockListener{
+		Mu:        sync.Mutex{},
 		AcceptErr: errors.New("accept error"),
 	}
 
@@ -168,7 +187,7 @@ func TestListenLoop_AcceptError(t *testing.T) {
 	}()
 
 	// Wait for the server to start
-	time.Sleep(5 * time.Millisecond)
+	time.Sleep(500 * time.Microsecond)
 
 	// Cancel the context to stop the server
 	cancel()
@@ -179,10 +198,14 @@ func TestListenLoop_AcceptError(t *testing.T) {
 func TestListenLoop_ContextCanceled(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 	mockConn := &MockConn{
+		Mu:          sync.Mutex{},
 		ReadBuffer:  bytes.NewBufferString("test query\n"),
 		WriteBuffer: new(bytes.Buffer),
 	}
-	listener := &MockListener{AcceptConn: mockConn}
+	listener := &MockListener{
+		Mu:         sync.Mutex{},
+		AcceptConn: mockConn,
+	}
 
 	server := New(logger, listener)
 
@@ -196,7 +219,7 @@ func TestListenLoop_ContextCanceled(t *testing.T) {
 	}()
 
 	// Wait for the server to start
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(500 * time.Microsecond)
 
 	// Cancel the context to stop the server
 	cancel()
@@ -212,13 +235,19 @@ func TestListenLoop_ContextCanceled(t *testing.T) {
 func TestListenLoop_WithPanic(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 	mockConn := &MockConn{
+		Mu:          sync.Mutex{},
 		ReadBuffer:  bytes.NewBufferString("test query\n"),
 		WriteBuffer: new(bytes.Buffer),
 	}
-	listener := &MockListener{AcceptConn: mockConn}
+	listener := &MockListener{
+		Mu:         sync.Mutex{},
+		AcceptConn: mockConn,
+	}
 
 	server := New(logger, listener).WithQueryHandleFunc(
-		func(_ context.Context, _ net.Conn) {
+		func(_ context.Context, conn net.Conn) {
+			defer conn.Close()
+
 			panic("test panic")
 		})
 
@@ -231,7 +260,7 @@ func TestListenLoop_WithPanic(t *testing.T) {
 		server.Listen(ctx)
 	}()
 
-	time.Sleep(5 * time.Millisecond)
+	time.Sleep(500 * time.Microsecond)
 
 	cancel()
 	wg.Wait()

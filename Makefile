@@ -2,12 +2,13 @@
 GO := go
 
 # Default target
-all: test lint run
+all: test lint run-database
 
 # Run all tests
 test:
 	@echo "Running all tests..."
-	$(GO) test ./... -v
+	$(GO) clean -testcache
+	$(GO) test ./... -race
 
 # Run tests with coverage
 test-coverage:
@@ -15,11 +16,6 @@ test-coverage:
 	$(GO) test ./... -coverprofile=coverage.out
 	$(GO) tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report generated at coverage.html"
-
-# Run tests with race detector
-test-race:
-	@echo "Running tests with race detector..."
-	$(GO) test ./... -race
 
 # Run linter (golangci-lint)
 lint:
@@ -43,4 +39,4 @@ clean:
 	$(GO) clean -testcache
 
 # Phony targets
-.PHONY: all test test-coverage test-race lint run-database clean
+.PHONY: all test test-coverage lint run-database clean
