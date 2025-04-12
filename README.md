@@ -1,3 +1,8 @@
+# KVDB
+
+In memory Key Value DB.
+
+## Command
 ```
 query = set_command | get_command | del_command
 
@@ -17,3 +22,23 @@ SET weather_2_pm cold_moscow_weather
 GET /etc/nginx/config
 DEL user_\*\*\*\*
 ```
+
+## Configuration
+
+```yaml
+engine:
+  type: "in_memory"
+network:
+  address: "127.0.0.1:3223"
+  max_connections: 100
+  max_message_size: "4KB"
+  idle_timeout: 5m
+logging:
+  level: "info"
+  output: "/log/output.log"
+```
+
+## How to run
+`make all` - run test, lint code and run server with default config placed in `etc/server.yaml`.
+
+`make run-client` - start database client.

@@ -3,7 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
-	"kvdb/internal/cli"
+	cli "kvdb/internal/cli/db"
 	"kvdb/internal/compute"
 	"kvdb/internal/database"
 	"kvdb/internal/storage/inmemory"
