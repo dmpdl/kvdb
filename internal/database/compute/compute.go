@@ -3,7 +3,7 @@ package compute
 import (
 	"errors"
 	"fmt"
-	"kvdb/internal/model"
+	"kvdb/internal/database"
 	"strings"
 
 	"github.com/google/shlex"
@@ -17,58 +17,58 @@ var (
 
 type Compute struct{}
 
-var commandsMap = map[string]model.Command{
-	"get": model.CommandGET,
-	"set": model.CommandSET,
-	"del": model.CommandDEL,
+var commandsMap = map[string]database.Command{
+	"get": database.CommandGET,
+	"set": database.CommandSET,
+	"del": database.CommandDEL,
 }
 
-var argsLenMap = map[model.Command]int{
-	model.CommandGET: model.CommandGETArgsLen,
-	model.CommandSET: model.CommandSETArgsLen,
-	model.CommandDEL: model.CommandDELArgsLen,
+var argsLenMap = map[database.Command]int{
+	database.CommandGET: database.CommandGETArgsLen,
+	database.CommandSET: database.CommandSETArgsLen,
+	database.CommandDEL: database.CommandDELArgsLen,
 }
 
 func New() *Compute {
 	return &Compute{}
 }
 
-func (c *Compute) Parse(query string) (model.Query, error) {
+func (c *Compute) Parse(query string) (database.Query, error) {
 	queryParts, err := shlex.Split(query)
 	if err != nil {
-		return model.Query{}, fmt.Errorf("failed to parse query: %w", err)
+		return database.Query{}, fmt.Errorf("failed to parse query: %w", err)
 	}
 
 	if len(queryParts) == 0 {
-		return model.Query{}, fmt.Errorf("%w: empty command", ErrInvalidQuery)
+		return database.Query{}, fmt.Errorf("%w: empty command", ErrInvalidQuery)
 	}
 
 	command, ok := mapCommand(queryParts[0])
 	if !ok {
-		return model.Query{}, fmt.Errorf(
+		return database.Query{}, fmt.Errorf(
 			"%w: unknown command: %s", ErrInvalidQuery, queryParts[0])
 	}
 
 	args := queryParts[1:]
 	if err := validateArgs(command, args); err != nil {
-		return model.Query{}, err
+		return database.Query{}, err
 	}
 
-	return model.Query{
+	return database.Query{
 		Command: command,
 		Args:    args,
 	}, nil
 }
 
-func mapCommand(commandRaw string) (model.Command, bool) {
+func mapCommand(commandRaw string) (database.Command, bool) {
 	command, ok := commandsMap[strings.ToLower(commandRaw)]
 	if !ok {
-		return model.CommandUNK, false
+		return database.CommandUNK, false
 	}
 	return command, true
 }
 
-func validateArgs(command model.Command, args []string) error {
+func validateArgs(command database.Command, args []string) error {
 	wantArgsLen, ok := argsLenMap[command]
 	if !ok {
 		return fmt.Errorf("%w: command %d", ErrUnknownCommand, command)

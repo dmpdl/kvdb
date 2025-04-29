@@ -4,9 +4,10 @@ import (
 	"bufio"
 	"context"
 	cli "kvdb/internal/cli/db"
-	"kvdb/internal/compute"
 	"kvdb/internal/database"
-	"kvdb/internal/storage/inmemory"
+	"kvdb/internal/database/compute"
+	"kvdb/internal/database/engine/inmemory"
+	"kvdb/internal/database/storage"
 	"os"
 	"os/signal"
 	"syscall"
@@ -18,7 +19,8 @@ func main() {
 	// Init database.
 	logger := zap.NewExample()
 	compute := compute.New()
-	storage := inmemory.New()
+	engine := inmemory.New()
+	storage := storage.New(engine)
 	database := database.New(logger, compute, storage)
 
 	ctx, cancel := context.WithCancel(context.Background())

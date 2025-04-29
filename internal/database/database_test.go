@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"kvdb/internal/database/mocks"
-	"kvdb/internal/model"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -17,7 +16,7 @@ func TestDatabase_RunCommand_OK(t *testing.T) {
 	tests := []struct {
 		name           string
 		rawQuery       string
-		parseResult    model.Query
+		parseResult    Query
 		parseError     error
 		execResult     string
 		execError      error
@@ -26,8 +25,8 @@ func TestDatabase_RunCommand_OK(t *testing.T) {
 		{
 			name:     "valid GET command",
 			rawQuery: "get key",
-			parseResult: model.Query{
-				Command: model.CommandGET,
+			parseResult: Query{
+				Command: CommandGET,
 				Args:    []string{"key"},
 			},
 			parseError:     nil,
@@ -38,8 +37,8 @@ func TestDatabase_RunCommand_OK(t *testing.T) {
 		{
 			name:     "valid SET command",
 			rawQuery: "set key value",
-			parseResult: model.Query{
-				Command: model.CommandSET,
+			parseResult: Query{
+				Command: CommandSET,
 				Args:    []string{"key", "value"},
 			},
 			parseError:     nil,
@@ -50,8 +49,8 @@ func TestDatabase_RunCommand_OK(t *testing.T) {
 		{
 			name:     "valid DEL command",
 			rawQuery: "del key",
-			parseResult: model.Query{
-				Command: model.CommandDEL,
+			parseResult: Query{
+				Command: CommandDEL,
 				Args:    []string{"key"},
 			},
 			parseError:     nil,
@@ -62,7 +61,7 @@ func TestDatabase_RunCommand_OK(t *testing.T) {
 		{
 			name:           "parse error",
 			rawQuery:       "invalid query",
-			parseResult:    model.Query{},
+			parseResult:    Query{},
 			parseError:     errors.New("parse error"),
 			execResult:     "",
 			execError:      nil,
@@ -71,8 +70,8 @@ func TestDatabase_RunCommand_OK(t *testing.T) {
 		{
 			name:     "unknown command",
 			rawQuery: "unknown key",
-			parseResult: model.Query{
-				Command: model.CommandUNK,
+			parseResult: Query{
+				Command: CommandUNK,
 				Args:    []string{"key"},
 			},
 			parseError:     nil,
@@ -99,11 +98,11 @@ func TestDatabase_RunCommand_OK(t *testing.T) {
 
 			// Настраиваем mock storage в зависимости от команды
 			switch tt.parseResult.Command {
-			case model.CommandGET:
+			case CommandGET:
 				mockStorage.On("Get", mock.Anything, tt.parseResult.Args[0]).Return(tt.execResult, true)
-			case model.CommandSET:
+			case CommandSET:
 				mockStorage.On("Set", mock.Anything, tt.parseResult.Args[0], tt.parseResult.Args[1]).Return()
-			case model.CommandDEL:
+			case CommandDEL:
 				mockStorage.On("Del", mock.Anything, tt.parseResult.Args[0]).Return()
 			}
 

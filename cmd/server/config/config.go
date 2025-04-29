@@ -2,16 +2,18 @@ package config
 
 import (
 	"fmt"
-	"kvdb/internal/compute"
-	"kvdb/internal/database"
-	"kvdb/internal/network/server"
-	"kvdb/internal/rpc/query"
-	"kvdb/internal/storage/inmemory"
 	"net"
 	"os"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+
+	"kvdb/internal/database"
+	"kvdb/internal/database/compute"
+	"kvdb/internal/database/engine/inmemory"
+	"kvdb/internal/database/storage"
+	"kvdb/internal/network/server"
+	"kvdb/internal/rpc/query"
 
 	serverConfig "kvdb/internal/config/server"
 )
@@ -59,7 +61,8 @@ func InitLogger(config *serverConfig.Config) (*zap.Logger, error) {
 
 func InitDatabase(logger *zap.Logger) *database.Database {
 	compute := compute.New()
-	storage := inmemory.New()
+	engine := inmemory.New()
+	storage := storage.New(engine)
 	return database.New(logger, compute, storage)
 }
 
