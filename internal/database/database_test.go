@@ -5,8 +5,6 @@ import (
 	"errors"
 	"testing"
 
-	"kvdb/internal/database/mocks"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"go.uber.org/zap"
@@ -84,11 +82,11 @@ func TestDatabase_RunCommand_OK(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Создаем mock compute
-			mockCompute := mocks.NewCompute(t)
+			mockCompute := NewMockCompute(t)
 			mockCompute.On("Parse", tt.rawQuery).Return(tt.parseResult, tt.parseError)
 
 			// Создаем mock storage
-			mockStorage := mocks.NewStorage(t)
+			mockStorage := NewMockStorage(t)
 
 			// Создаем логгер
 			logger := zap.NewNop()

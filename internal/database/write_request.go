@@ -5,19 +5,24 @@ import (
 )
 
 type WriteRequest struct {
-	command Command
-	args    []string
+	WALRecord
 	promise conc.PromiseError
 }
 
 func NewWriteRequest(command Command, args []string) WriteRequest {
 	return WriteRequest{
-		command: command,
-		args:    args,
+		WALRecord: WALRecord{
+			Command:   command,
+			Arguments: args,
+		},
 		promise: conc.NewPromise[error](),
 	}
 }
 
 func (l *WriteRequest) FutureResponse() conc.FutureError {
 	return l.promise.GetFuture()
+}
+
+func (l *WriteRequest) SetResponse(err error) {
+	l.promise.Set(err)
 }

@@ -18,13 +18,11 @@ var (
 	ErrInvalidArgs    = errors.New("invalid arguments")
 )
 
-//go:generate mockery --name compute --exported --case underscore --with-expecter
-type compute interface {
+type Compute interface {
 	Parse(query string) (Query, error)
 }
 
-//go:generate mockery --name storage --exported --case underscore --with-expecter
-type storage interface {
+type Storage interface {
 	Get(ctx context.Context, key string) (string, error)
 	Set(ctx context.Context, key, value string) error
 	Del(ctx context.Context, key string) error
@@ -32,8 +30,8 @@ type storage interface {
 
 type Database struct {
 	logger      *zap.Logger
-	compute     compute
-	storage     storage
+	compute     Compute
+	storage     Storage
 	commandsMap map[Command]commandExecFunc
 }
 
@@ -41,8 +39,8 @@ type commandExecFunc func(ctx context.Context, query Query) (string, error)
 
 func New(
 	logger *zap.Logger,
-	compute compute,
-	storage storage,
+	compute Compute,
+	storage Storage,
 ) *Database {
 	db := &Database{
 		logger:  logger,

@@ -44,7 +44,7 @@ func (w *WAL) Run(ctx context.Context) {
 	defer ticker.Stop()
 
 	for {
-		// Check context closed in first priority
+		// Check context closed in first priority.
 		select {
 		case <-ctx.Done():
 			w.flushBatch()

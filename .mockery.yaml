@@ -1,0 +1,8 @@
+packages:
+  kvdb/internal/database:
+    interfaces:
+      Storage:
+      Compute:
+  kvdb/internal/database/log/writer:
+    interfaces:
+      Segment:
