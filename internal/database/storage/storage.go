@@ -2,10 +2,13 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"kvdb/internal/conc"
 	dwal "kvdb/internal/database/dummy/wal"
 )
+
+var ErrKeyNotFound = errors.New("key not found")
 
 type Engine interface {
 	Get(ctx context.Context, key string) (string, bool)
@@ -36,7 +39,11 @@ func (s *Storage) WithWAL(wal WAL) *Storage {
 }
 
 func (s *Storage) Get(ctx context.Context, key string) (string, error) {
-	value, _ := s.engine.Get(ctx, key)
+	value, ok := s.engine.Get(ctx, key)
+	if !ok {
+		return "", fmt.Errorf("%w: %s", ErrKeyNotFound, key)
+	}
+
 	return value, nil
 }
 

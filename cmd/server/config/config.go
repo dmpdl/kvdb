@@ -11,7 +11,10 @@ import (
 	"kvdb/internal/database"
 	"kvdb/internal/database/compute"
 	"kvdb/internal/database/engine/inmemory"
+	"kvdb/internal/database/fileio"
+	"kvdb/internal/database/log/writer"
 	"kvdb/internal/database/storage"
+	"kvdb/internal/database/wal"
 	"kvdb/internal/network/server"
 	"kvdb/internal/rpc/query"
 
@@ -59,11 +62,33 @@ func InitLogger(config *serverConfig.Config) (*zap.Logger, error) {
 	return logger, nil
 }
 
-func InitDatabase(logger *zap.Logger) *database.Database {
+func InitDatabase(storage *storage.Storage, logger *zap.Logger) *database.Database {
 	compute := compute.New()
+	return database.New(cloneLogger(logger, "database"), compute, storage)
+}
+
+func InitStorage(conf *serverConfig.Config, logger *zap.Logger, wal *wal.WAL) *storage.Storage {
 	engine := inmemory.New()
 	storage := storage.New(engine)
-	return database.New(logger, compute, storage)
+
+	if wal != nil {
+		storage.WithWAL(wal)
+	}
+
+	return storage
+}
+
+func InitWALOptional(conf *serverConfig.Config, logger *zap.Logger) *wal.WAL {
+	if conf.WAL == nil {
+		return nil
+	}
+
+	logsWriter := writer.New(
+		fileio.NewSegment(conf.WAL.DataDirectory, conf.WAL.MaxSegmentSizeBytes))
+
+	return wal.New(logsWriter, cloneLogger(logger, "wal")).
+		WithFlushingBatchLength(conf.WAL.FlushingBatchLength).
+		WithFlushingBatchTimeout(conf.WAL.FlushingBatchTimeout)
 }
 
 func InitServer(conf *serverConfig.Config, logger *zap.Logger, db *database.Database) (*server.TCPServer, error) {
@@ -72,13 +97,16 @@ func InitServer(conf *serverConfig.Config, logger *zap.Logger, db *database.Data
 		return nil, err
 	}
 
-	queryHandler := query.New(db, logger)
+	queryHandler := query.New(db)
 
-	tcpServer := server.New(logger, listener).
+	tcpServer := server.New(cloneLogger(logger, "server"), listener, queryHandler.Handle).
 		WithMaxConn(conf.Network.MaxConnections).
 		WithMaxMessageSize(conf.Network.MaxMessageSizeBytes).
-		WithIdleTimeout(conf.Network.IdleTimeout).
-		WithQueryHandleFunc(queryHandler.Handle)
+		WithIdleTimeout(conf.Network.IdleTimeout)
 
 	return tcpServer, nil
+}
+
+func cloneLogger(logger *zap.Logger, name string) *zap.Logger {
+	return logger.With(zap.String("me", name))
 }

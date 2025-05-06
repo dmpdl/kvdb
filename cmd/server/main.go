@@ -6,6 +6,7 @@ import (
 	"kvdb/cmd/server/config"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"go.uber.org/zap"
@@ -27,7 +28,11 @@ func main() {
 		mainLogger.Fatal("failed init logger", zap.Error(err))
 	}
 
-	db := config.InitDatabase(logger)
+	var (
+		wal     = config.InitWALOptional(conf, logger)
+		storage = config.InitStorage(conf, logger, wal)
+		db      = config.InitDatabase(storage, logger)
+	)
 
 	tcpServer, err := config.InitServer(conf, logger, db)
 	if err != nil {
@@ -45,5 +50,21 @@ func main() {
 		cancel()
 	}()
 
-	tcpServer.Listen(ctx)
+	var wg sync.WaitGroup
+
+	// Start listening
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		tcpServer.Listen(ctx)
+	}()
+
+	// Start WAL flushing
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		wal.RunFlushing(ctx)
+	}()
+
+	wg.Wait()
 }

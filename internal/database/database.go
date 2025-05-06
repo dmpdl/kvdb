@@ -57,7 +57,7 @@ func New(
 	return db
 }
 
-func (db *Database) RunCommand(ctx context.Context, rawQuery string) string {
+func (db *Database) RunCommand(ctx context.Context, rawQuery string) (string, error) {
 	zapArgs := []zap.Field{
 		zap.String("raw_query", rawQuery),
 	}
@@ -67,24 +67,24 @@ func (db *Database) RunCommand(ctx context.Context, rawQuery string) string {
 	if err != nil {
 		zapArgs = append(zapArgs, zap.Error(err))
 		db.logger.Error("failed parse query", zapArgs...)
-		return fmt.Sprintf("failed parse query: %s", err.Error())
+		return "", fmt.Errorf("failed parse query: %s", err)
 	}
 
 	exec, ok := db.commandsMap[query.Command]
 	if !ok {
 		zapArgs = append(zapArgs, zap.Error(ErrUnknownCommand))
 		db.logger.Error("unknown command", zapArgs...)
-		return ErrUnknownCommand.Error()
+		return "", ErrUnknownCommand
 	}
 
 	output, err := exec(ctx, query)
 	if err != nil {
 		zapArgs = append(zapArgs, zap.Error(err))
 		db.logger.Error("failed run query", zapArgs...)
-		return fmt.Sprintf("failed run query: %s", err.Error())
+		return "", fmt.Errorf("failed to run query: %w", err)
 	}
 
-	return output
+	return output, nil
 }
 
 func (db *Database) execGET(ctx context.Context, query Query) (string, error) {
