@@ -9,9 +9,10 @@ type WriteRequest struct {
 	promise conc.PromiseError
 }
 
-func NewWriteRequest(command Command, args []string) WriteRequest {
+func NewWriteRequest(lsn int64, command Command, args []string) WriteRequest {
 	return WriteRequest{
 		WALRecord: WALRecord{
+			LSN:       lsn,
 			Command:   command,
 			Arguments: args,
 		},

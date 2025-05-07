@@ -20,7 +20,10 @@ func main() {
 	logger := zap.NewExample()
 	compute := compute.New()
 	engine := inmemory.New()
-	storage := storage.New(engine)
+	storage, err := storage.New(engine)
+	if err != nil {
+		logger.Fatal("failed init storage", zap.Error(err))
+	}
 	database := database.New(logger, compute, storage)
 
 	ctx, cancel := context.WithCancel(context.Background())

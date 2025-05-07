@@ -20,15 +20,15 @@ func TestWrite(t *testing.T) {
 		{
 			name: "without error",
 			requests: []database.WriteRequest{
-				database.NewWriteRequest(database.CommandSET, []string{"key", "value"}),
-				database.NewWriteRequest(database.CommandDEL, []string{"key"}),
+				database.NewWriteRequest(12, database.CommandSET, []string{"key", "value"}),
+				database.NewWriteRequest(12, database.CommandDEL, []string{"key"}),
 			},
 		},
 		{
 			name: "with error",
 			requests: []database.WriteRequest{
-				database.NewWriteRequest(database.CommandSET, []string{"key", "value"}),
-				database.NewWriteRequest(database.CommandDEL, []string{"key"}),
+				database.NewWriteRequest(12, database.CommandSET, []string{"key", "value"}),
+				database.NewWriteRequest(12, database.CommandDEL, []string{"key"}),
 			},
 			writeError: errors.New("some error"),
 		},

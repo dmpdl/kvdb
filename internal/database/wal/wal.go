@@ -2,13 +2,17 @@ package wal
 
 import (
 	"context"
+	"errors"
 	"kvdb/internal/conc"
 	"kvdb/internal/database"
+	"kvdb/internal/database/storage"
 	"sync"
 	"time"
 
 	"go.uber.org/zap"
 )
+
+var errEmptyTransactionID = errors.New("empty transaction id")
 
 type WAL struct {
 	logger     *zap.Logger
@@ -17,6 +21,7 @@ type WAL struct {
 	mutex      sync.Mutex
 	batches    chan []database.WriteRequest
 	logsWriter LogsWriter
+	logsReader LogsReader
 }
 
 type opts struct {
@@ -28,9 +33,14 @@ type LogsWriter interface {
 	Write(batch []database.WriteRequest) error
 }
 
-func New(logsWriter LogsWriter, logger *zap.Logger) *WAL {
+type LogsReader interface {
+	ReadLogs() ([]database.WALRecord, error)
+}
+
+func New(logsWriter LogsWriter, logsReader LogsReader, logger *zap.Logger) *WAL {
 	return &WAL{
 		logsWriter: logsWriter,
+		logsReader: logsReader,
 		logger:     logger,
 	}
 }
@@ -78,15 +88,22 @@ func (w *WAL) RunFlushing(ctx context.Context) {
 }
 
 func (w *WAL) Set(ctx context.Context, key, value string) conc.FutureError {
-	return w.push(ctx, database.CommandDEL, []string{key, value})
+	return w.push(ctx, database.CommandSET, []string{key, value})
 }
 
 func (w *WAL) Del(ctx context.Context, key string) conc.FutureError {
 	return w.push(ctx, database.CommandDEL, []string{key})
 }
 
-func (w *WAL) push(_ context.Context, command database.Command, args []string) conc.FutureError {
-	record := database.NewWriteRequest(command, args)
+func (w *WAL) push(ctx context.Context, command database.Command, args []string) conc.FutureError {
+	tid, ok := storage.GetTransactionID(ctx)
+	if !ok {
+		promise := conc.NewPromise[error]()
+		promise.Set(errEmptyTransactionID)
+		return promise.GetFuture()
+	}
+
+	record := database.NewWriteRequest(tid, command, args)
 
 	conc.WithLock(&w.mutex, func() {
 		w.batch = append(w.batch, record)
@@ -118,4 +135,8 @@ func (w *WAL) flushBatch() {
 
 		break
 	}
+}
+
+func (w *WAL) Recover() ([]database.WALRecord, error) {
+	return w.logsReader.ReadLogs()
 }

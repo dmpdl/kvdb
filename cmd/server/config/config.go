@@ -12,6 +12,7 @@ import (
 	"kvdb/internal/database/compute"
 	"kvdb/internal/database/engine/inmemory"
 	"kvdb/internal/database/fileio"
+	"kvdb/internal/database/log/reader"
 	"kvdb/internal/database/log/writer"
 	"kvdb/internal/database/storage"
 	"kvdb/internal/database/wal"
@@ -67,12 +68,15 @@ func InitDatabase(storage *storage.Storage, logger *zap.Logger) *database.Databa
 	return database.New(cloneLogger(logger, "database"), compute, storage)
 }
 
-func InitStorage(wal *wal.WAL) *storage.Storage {
+func InitStorage(logger *zap.Logger, wal *wal.WAL) *storage.Storage {
 	engine := inmemory.New()
-	storage := storage.New(engine)
-
+	opts := []storage.Option{}
 	if wal != nil {
-		storage.WithWAL(wal)
+		opts = append(opts, storage.WithWAL(wal))
+	}
+	storage, err := storage.New(engine, opts...)
+	if err != nil {
+		logger.Fatal("failed init storage", zap.Error(err))
 	}
 
 	return storage
@@ -85,8 +89,11 @@ func InitWALOptional(conf *serverConfig.Config, logger *zap.Logger) *wal.WAL {
 
 	logsWriter := writer.New(
 		fileio.NewSegment(conf.WAL.DataDirectory, conf.WAL.MaxSegmentSizeBytes))
+	logsReader := reader.New(
+		fileio.NewSegmentProcessor(conf.WAL.DataDirectory),
+	)
 
-	return wal.New(logsWriter, cloneLogger(logger, "wal")).
+	return wal.New(logsWriter, logsReader, cloneLogger(logger, "wal")).
 		WithFlushingBatchLength(conf.WAL.FlushingBatchLength).
 		WithFlushingBatchTimeout(conf.WAL.FlushingBatchTimeout)
 }

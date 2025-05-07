@@ -6,6 +6,7 @@ import (
 )
 
 type WALRecord struct {
+	LSN       int64
 	Command   Command
 	Arguments []string
 }
