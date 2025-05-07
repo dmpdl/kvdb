@@ -11,6 +11,9 @@ import (
 const (
 	messageOK         = "ok"
 	messageEmptyValue = "nil"
+	argsLenCommandGet = 1
+	argsLenCommandSet = 2
+	argsLenCommandDel = 1
 )
 
 var (
@@ -67,7 +70,7 @@ func (db *Database) RunCommand(ctx context.Context, rawQuery string) (string, er
 	if err != nil {
 		zapArgs = append(zapArgs, zap.Error(err))
 		db.logger.Error("failed parse query", zapArgs...)
-		return "", fmt.Errorf("failed parse query: %s", err)
+		return "", fmt.Errorf("failed parse query: %w", err)
 	}
 
 	exec, ok := db.commandsMap[query.Command]
@@ -88,8 +91,8 @@ func (db *Database) RunCommand(ctx context.Context, rawQuery string) (string, er
 }
 
 func (db *Database) execGET(ctx context.Context, query Query) (string, error) {
-	if len(query.Args) != CommandGETArgsLen {
-		return "", fmt.Errorf("%w: want %d args", ErrInvalidArgs, CommandGETArgsLen)
+	if len(query.Args) != argsLenCommandGet {
+		return "", fmt.Errorf("%w: key is required", ErrInvalidArgs)
 	}
 
 	value, err := db.storage.Get(ctx, query.Args[0])
@@ -101,8 +104,8 @@ func (db *Database) execGET(ctx context.Context, query Query) (string, error) {
 }
 
 func (db *Database) execSET(ctx context.Context, query Query) (string, error) {
-	if len(query.Args) != CommandSETArgsLen {
-		return "", fmt.Errorf("%w: want %d args", ErrInvalidArgs, CommandSETArgsLen)
+	if len(query.Args) != argsLenCommandSet {
+		return "", fmt.Errorf("%w: key and value are required", ErrInvalidArgs)
 	}
 
 	if err := db.storage.Set(ctx, query.Args[0], query.Args[1]); err != nil {
@@ -113,8 +116,8 @@ func (db *Database) execSET(ctx context.Context, query Query) (string, error) {
 }
 
 func (db *Database) execDEL(ctx context.Context, query Query) (string, error) {
-	if len(query.Args) != CommandDELArgsLen {
-		return "", fmt.Errorf("%w: want %d args", ErrInvalidArgs, CommandDELArgsLen)
+	if len(query.Args) != argsLenCommandDel {
+		return "", fmt.Errorf("%w: key is required", ErrInvalidArgs)
 	}
 
 	if err := db.storage.Del(ctx, query.Args[0]); err != nil {

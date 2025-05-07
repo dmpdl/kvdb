@@ -30,7 +30,7 @@ func main() {
 
 	var (
 		wal     = config.InitWALOptional(conf, logger)
-		storage = config.InitStorage(conf, logger, wal)
+		storage = config.InitStorage(wal)
 		db      = config.InitDatabase(storage, logger)
 	)
 

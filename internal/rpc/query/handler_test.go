@@ -1,120 +1,85 @@
 package query
 
 import (
-	"bufio"
 	"context"
-	"net"
-	"strings"
-	"sync"
+	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap/zaptest"
 )
 
-// MockDatabase is a mock implementation of the Database interface for testing.
-type MockDatabase struct {
-	response string
-}
-
-func (m *MockDatabase) RunCommand(_ context.Context, _ string) string {
-	return m.response
-}
-
 func TestHandler_Handle(t *testing.T) {
-	logger := zaptest.NewLogger(t)
-	mockDB := &MockDatabase{response: "mock response\n"}
-	handler := New(mockDB, logger)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Create a pipe to simulate a network connection
-	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
-	defer serverConn.Close()
-
-	// Start the handler in a goroutine
-	wg := &sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		handler.Handle(ctx, serverConn)
-	}()
-
-	query := "test query\n"
-	_, err := clientConn.Write([]byte(query))
-	require.NoError(t, err)
-
-	cancel()
-
-	reader := bufio.NewReader(clientConn)
-	response, err := reader.ReadString('\n')
-	require.NoError(t, err)
-
-	expectedResponse := "mock response"
-	require.Equal(t, expectedResponse, strings.TrimSpace(response))
-
-	wg.Wait()
-}
-
-func TestHandler_Handle_ReadError(t *testing.T) {
-	logger := zaptest.NewLogger(t)
-	mockDB := &MockDatabase{response: "mock response\n"}
-	handler := New(mockDB, logger)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Create a pipe to simulate a network connection
-	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
-	defer serverConn.Close()
-
-	// Close the client connection to simulate a read error
-	clientConn.Close()
-
-	// Start the handler in a goroutine
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		handler.Handle(ctx, serverConn)
-	}()
-
-	wg.Wait()
-}
-
-func TestHandler_Handle_WriteError(t *testing.T) {
-	logger := zaptest.NewLogger(t)
-	mockDB := &MockDatabase{response: "mock response\n"}
-	handler := New(mockDB, logger)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Create a pipe to simulate a network connection
-	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
-	defer serverConn.Close()
-
-	// Start the handler in a goroutine
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		handler.Handle(ctx, serverConn)
-	}()
-
-	// Write a query to the client connection
-	query := "test query\n"
-	_, err := clientConn.Write([]byte(query))
-	if err != nil {
-		t.Fatalf("Failed to write query to connection: %v", err)
+	tests := []struct {
+		name           string
+		request        []byte
+		mockRequest    string
+		mockResponse   string
+		mockError      error
+		expectedOutput []byte
+	}{
+		{
+			name:           "successful command execution",
+			request:        []byte("get key"),
+			mockRequest:    "get key",
+			mockResponse:   "value",
+			mockError:      nil,
+			expectedOutput: []byte("value"),
+		},
+		{
+			name:           "empty query",
+			request:        []byte("   "),
+			mockRequest:    "",
+			mockResponse:   "",
+			mockError:      nil,
+			expectedOutput: []byte(""),
+		},
+		{
+			name:           "database error",
+			request:        []byte("invalid command"),
+			mockRequest:    "invalid command",
+			mockResponse:   "",
+			mockError:      errors.New("unknown command"),
+			expectedOutput: []byte("ERR: unknown command"),
+		},
+		{
+			name:           "query with whitespace",
+			request:        []byte("  get key  "),
+			mockRequest:    "get key",
+			mockResponse:   "value",
+			mockError:      nil,
+			expectedOutput: []byte("value"),
+		},
 	}
 
-	// Close the client connection to simulate a write error
-	clientConn.Close()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Setup mock
+			mockDB := NewMockDatabase(t)
+			mockDB.EXPECT().
+				RunCommand(mock.Anything, tt.mockRequest).
+				Return(tt.mockResponse, tt.mockError)
 
-	wg.Wait()
+			// Create handler with mock
+			handler := New(mockDB)
+
+			// Execute test
+			ctx := context.Background()
+			output := handler.Handle(ctx, tt.request)
+
+			// Verify output
+			if string(output) != string(tt.expectedOutput) {
+				t.Errorf("expected output %q, got %q", tt.expectedOutput, output)
+			}
+		})
+	}
+}
+
+func TestNew(t *testing.T) {
+	mockDB := NewMockDatabase(t)
+
+	handler := New(mockDB)
+
+	require.NotNil(t, handler)
+	require.Equal(t, handler.database, mockDB)
 }

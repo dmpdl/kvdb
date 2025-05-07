@@ -36,6 +36,7 @@ func TestWrite(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			mockSegment := NewMockSegment(t)
 
 			var buffer bytes.Buffer
@@ -53,7 +54,7 @@ func TestWrite(t *testing.T) {
 			if tt.writeError == nil {
 				require.NoError(t, err)
 			} else {
-				require.Error(t, err, tt.writeError)
+				require.ErrorIs(t, err, tt.writeError)
 			}
 		})
 	}

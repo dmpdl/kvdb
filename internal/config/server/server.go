@@ -1,12 +1,37 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"math"
 	"time"
 
 	humanize "github.com/dustin/go-humanize"
 	"gopkg.in/yaml.v3"
+)
+
+const (
+	// Engine constants.
+	DefaultEngineType = "in_memory"
+
+	// Network constants.
+	DefaultNetworkAddress      = "127.0.0.1:8080"
+	DefaultMaxConnections      = 50
+	DefaultMaxMessageSize      = "2KB"
+	DefaultMaxMessageSizeBytes = 2048
+	DefaultNetworkIdleTimeout  = 1 * time.Minute
+
+	// Logging constants.
+	DefaultLogLevel  = "info"
+	DefaultLogOutput = "/var/log/app.log"
+
+	// WAL (Write-Ahead Log) constants.
+	DefaultFlushingBatchLength  = 100
+	DefaultFlushingBatchTimeout = 100 * time.Millisecond
+	DefaultMaxSegmentSize       = "1KB"
+	DefaultMaxSegmentSizeBytes  = 1024
+	DefaultDataDirectory        = "./dir"
 )
 
 type Config struct {
@@ -37,32 +62,32 @@ type WALConfig struct {
 	FlushingBatchLength  int           `yaml:"flushing_batch_length"`
 	FlushingBatchTimeout time.Duration `yaml:"flushing_batch_timeout"`
 	MaxSegmentSize       string        `yaml:"max_segment_size"`
-	MaxSegmentSizeBytes  uint64
-	DataDirectory        string `yaml:"data_directory"`
+	MaxSegmentSizeBytes  int           `yaml:"-"`
+	DataDirectory        string        `yaml:"data_directory"`
 }
 
 func GetDefaultConfig() Config {
 	return Config{
 		Engine: EngineConfig{
-			Type: "in_memory",
+			Type: DefaultEngineType,
 		},
 		Network: NetworkConfig{
-			Address:             "127.0.0.1:8080",
-			MaxConnections:      50,
-			MaxMessageSize:      "2KB",
-			MaxMessageSizeBytes: 2048,
-			IdleTimeout:         1 * time.Minute,
+			Address:             DefaultNetworkAddress,
+			MaxConnections:      DefaultMaxConnections,
+			MaxMessageSize:      DefaultMaxMessageSize,
+			MaxMessageSizeBytes: DefaultMaxMessageSizeBytes,
+			IdleTimeout:         DefaultNetworkIdleTimeout,
 		},
 		Logging: LoggingConfig{
-			Level:  "info",
-			Output: "/var/log/app.log",
+			Level:  DefaultLogLevel,
+			Output: DefaultLogOutput,
 		},
 		WAL: &WALConfig{
-			FlushingBatchLength:  100,
-			FlushingBatchTimeout: 100 * time.Millisecond,
-			MaxSegmentSize:       "1KB",
-			MaxSegmentSizeBytes:  1024,
-			DataDirectory:        "./dir",
+			FlushingBatchLength:  DefaultFlushingBatchLength,
+			FlushingBatchTimeout: DefaultFlushingBatchTimeout,
+			MaxSegmentSize:       DefaultMaxSegmentSize,
+			MaxSegmentSizeBytes:  DefaultMaxSegmentSizeBytes,
+			DataDirectory:        DefaultDataDirectory,
 		},
 	}
 }
@@ -131,17 +156,30 @@ func LoadConfig(r io.Reader) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed parse bytes %s: %w", config.Network.MaxMessageSize, err)
 	}
-	config.Network.MaxMessageSizeBytes = int(maxMessageSizeBytes)
+	config.Network.MaxMessageSizeBytes, err = safeUint64ToInt(maxMessageSizeBytes)
+	if err != nil {
+		return nil, err
+	}
 
 	if config.WAL != nil {
 		maxSegmentSize, err := humanize.ParseBytes(config.WAL.MaxSegmentSize)
 		if err != nil {
 			return nil, fmt.Errorf("failed parse bytes %s: %w", config.Network.MaxMessageSize, err)
 		}
-		config.WAL.MaxSegmentSizeBytes = maxSegmentSize
+		config.WAL.MaxSegmentSizeBytes, err = safeUint64ToInt(maxSegmentSize)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	config.setDefaults()
 
 	return config, nil
+}
+
+func safeUint64ToInt(u uint64) (int, error) {
+	if u > math.MaxInt {
+		return 0, errors.New("integer overflow: uint64 value too large for int")
+	}
+	return int(u), nil
 }

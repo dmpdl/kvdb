@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
 	"sync"
@@ -151,31 +152,35 @@ func (s *TCPServer) handleConn(ctx context.Context, conn net.Conn, connLimiter *
 		}
 	}()
 
-	logger := s.logger.With(zap.String("addr", conn.RemoteAddr().String()))
-
 	defer func() {
 		connLimiter.Release()
 	}()
 
-	// reuse buffer for requests
+	logger := s.logger.With(zap.String("addr", conn.RemoteAddr().String()))
+	s.handleRequest(ctx, conn, logger)
+}
+
+func (s *TCPServer) handleRequest(ctx context.Context, conn net.Conn, logger *zap.Logger) {
+	// Reuse buffer for requests.
 	request := make([]byte, s.opts.maxMessageSizeBytes)
 
 	for {
-		if s.opts.idleTimeout != 0 {
-			if err := conn.SetReadDeadline(time.Now().Add(s.opts.idleTimeout)); err != nil {
-				s.logger.Warn("failed to set read deadline", zap.Error(err))
-				break
-			}
+		if err := setReadDeadline(conn, s.opts.idleTimeout); err != nil {
+			s.logger.Warn("failed to set read deadline", zap.Error(err))
+			break
 		}
 
 		count, err := conn.Read(request)
-		if err != nil && err != io.EOF {
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
 			logger.Warn(
 				"failed to read data",
 				zap.Error(err),
 			)
 			break
-		} else if count == int(s.opts.maxMessageSizeBytes) {
+		} else if count == s.opts.maxMessageSizeBytes {
 			logger.Warn(
 				"small buffer size",
 				zap.Int("buffer_size", s.opts.maxMessageSizeBytes),
@@ -183,17 +188,17 @@ func (s *TCPServer) handleConn(ctx context.Context, conn net.Conn, connLimiter *
 			break
 		}
 
-		if s.opts.idleTimeout != 0 {
-			if err := conn.SetWriteDeadline(time.Now().Add(s.opts.idleTimeout)); err != nil {
-				s.logger.Warn("failed to set read deadline", zap.Error(err))
-				break
-			}
+		if err := setWriteDeadline(conn, s.opts.idleTimeout); err != nil {
+			s.logger.Warn("failed to set write deadline", zap.Error(err))
+			break
 		}
 
 		response := s.handleFunc(ctx, request[:count])
 		if len(response) == 0 {
 			s.logger.Warn("empty response")
+			break
 		}
+
 		if _, err := conn.Write(response); err != nil {
 			s.logger.Warn(
 				"failed to write data",
@@ -202,6 +207,26 @@ func (s *TCPServer) handleConn(ctx context.Context, conn net.Conn, connLimiter *
 			break
 		}
 	}
+}
+
+func setWriteDeadline(conn net.Conn, timeout time.Duration) error {
+	if timeout != 0 {
+		if err := conn.SetWriteDeadline(time.Now().Add(timeout)); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func setReadDeadline(conn net.Conn, timeout time.Duration) error {
+	if timeout != 0 {
+		if err := conn.SetReadDeadline(time.Now().Add(timeout)); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 type connectionLimiter struct {

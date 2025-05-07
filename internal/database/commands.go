@@ -9,12 +9,6 @@ const (
 	CommandDEL                // DEL key
 )
 
-const (
-	CommandGETArgsLen = 1
-	CommandSETArgsLen = 2
-	CommandDELArgsLen = 1
-)
-
 type Query struct {
 	Command Command
 	Args    []string

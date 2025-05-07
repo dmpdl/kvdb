@@ -12,13 +12,13 @@ func New() *DummyWAL {
 	return &DummyWAL{}
 }
 
-func (w *DummyWAL) Set(ctx context.Context, key, value string) conc.FutureError {
+func (w *DummyWAL) Set(_ context.Context, _, _ string) conc.FutureError {
 	promise := conc.NewPromise[error]()
 	promise.Set(nil)
 	return promise.GetFuture()
 }
 
-func (w *DummyWAL) Del(ctx context.Context, key string) conc.FutureError {
+func (w *DummyWAL) Del(_ context.Context, _ string) conc.FutureError {
 	promise := conc.NewPromise[error]()
 	promise.Set(nil)
 	return promise.GetFuture()

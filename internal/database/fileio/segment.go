@@ -11,11 +11,11 @@ var now = time.Now
 type Segment struct {
 	file    *os.File
 	size    int
-	maxSize uint64
+	maxSize int
 	dir     string
 }
 
-func NewSegment(dir string, maxSize uint64) *Segment {
+func NewSegment(dir string, maxSize int) *Segment {
 	return &Segment{
 		dir:     dir,
 		maxSize: maxSize,
@@ -23,7 +23,7 @@ func NewSegment(dir string, maxSize uint64) *Segment {
 }
 
 func (s *Segment) Write(data []byte) error {
-	if s.file == nil || uint64(s.size+len(data)) > s.maxSize {
+	if s.file == nil || s.size+len(data) > s.maxSize {
 		if err := s.rotateSegment(); err != nil {
 			return fmt.Errorf("failed to rotate segment: %w", err)
 		}

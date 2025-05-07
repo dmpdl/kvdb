@@ -23,10 +23,16 @@ var commandsMap = map[string]database.Command{
 	"del": database.CommandDEL,
 }
 
+const (
+	argsLenCommandGet = 1
+	argsLenCommandSet = 2
+	argsLenCommandDel = 1
+)
+
 var argsLenMap = map[database.Command]int{
-	database.CommandGET: database.CommandGETArgsLen,
-	database.CommandSET: database.CommandSETArgsLen,
-	database.CommandDEL: database.CommandDELArgsLen,
+	database.CommandGET: argsLenCommandGet,
+	database.CommandSET: argsLenCommandSet,
+	database.CommandDEL: argsLenCommandDel,
 }
 
 func New() *Compute {

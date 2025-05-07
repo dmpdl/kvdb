@@ -6,3 +6,6 @@ packages:
   kvdb/internal/database/log/writer:
     interfaces:
       Segment:
+  kvdb/internal/rpc/query:
+    interfaces:
+      Database:

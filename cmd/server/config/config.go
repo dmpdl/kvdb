@@ -67,7 +67,7 @@ func InitDatabase(storage *storage.Storage, logger *zap.Logger) *database.Databa
 	return database.New(cloneLogger(logger, "database"), compute, storage)
 }
 
-func InitStorage(conf *serverConfig.Config, logger *zap.Logger, wal *wal.WAL) *storage.Storage {
+func InitStorage(wal *wal.WAL) *storage.Storage {
 	engine := inmemory.New()
 	storage := storage.New(engine)
 
