@@ -9,3 +9,11 @@ packages:
   kvdb/internal/rpc/query:
     interfaces:
       Database:
+  kvdb/internal/database/storage:
+    interfaces:
+      Engine:
+      WAL:
+  kvdb/internal/database/wal:
+    interfaces:
+      LogsWriter:
+      LogsReader:

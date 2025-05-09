@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestStorage_Get(t *testing.T) {
+func TestEngine_Get(t *testing.T) {
 	tests := []struct {
 		name           string
 		key            string
@@ -35,7 +35,7 @@ func TestStorage_Get(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Создаем хранилище с тестовыми данными
-			storage := &Storage{
+			storage := &Engine{
 				mu:   sync.RWMutex{},
 				data: tt.data,
 			}
@@ -50,7 +50,7 @@ func TestStorage_Get(t *testing.T) {
 	}
 }
 
-func TestStorage_Set(t *testing.T) {
+func TestEngine_Set(t *testing.T) {
 	tests := []struct {
 		name         string
 		key          string
@@ -77,7 +77,7 @@ func TestStorage_Set(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Создаем хранилище с тестовыми данными
-			storage := &Storage{
+			storage := &Engine{
 				mu:   sync.RWMutex{},
 				data: tt.initialData,
 			}
@@ -91,7 +91,7 @@ func TestStorage_Set(t *testing.T) {
 	}
 }
 
-func TestStorage_Del(t *testing.T) {
+func TestEngine_Del(t *testing.T) {
 	tests := []struct {
 		name         string
 		key          string
@@ -115,7 +115,7 @@ func TestStorage_Del(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Создаем хранилище с тестовыми данными
-			storage := &Storage{
+			storage := &Engine{
 				mu:   sync.RWMutex{},
 				data: tt.initialData,
 			}

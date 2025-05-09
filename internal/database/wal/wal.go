@@ -41,6 +41,7 @@ func New(logsWriter LogsWriter, logsReader LogsReader, logger *zap.Logger) *WAL 
 	return &WAL{
 		logsWriter: logsWriter,
 		logsReader: logsReader,
+		batches:    make(chan []database.WriteRequest, 1),
 		logger:     logger,
 	}
 }
