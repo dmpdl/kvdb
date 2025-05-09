@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 )
 
@@ -46,10 +48,14 @@ type MockConn struct {
 }
 
 func (m *MockConn) Read(b []byte) (int, error) {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
 	return m.ReadBuffer.Read(b)
 }
 
 func (m *MockConn) Write(b []byte) (int, error) {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
 	return m.WriteBuffer.Write(b)
 }
 
@@ -88,7 +94,9 @@ func TestNewTCPServer(t *testing.T) {
 		Mu: sync.Mutex{},
 	}
 
-	server := New(logger, listener)
+	server := New(logger, listener, func(_ context.Context, _ []byte) []byte {
+		return []byte("test")
+	})
 
 	if server.opts.maxConn != defaultMaxConn {
 		t.Errorf("Expected maxConn %d, got %d", defaultMaxConn, server.opts.maxConn)
@@ -108,7 +116,9 @@ func TestWithOptions(t *testing.T) {
 		Mu: sync.Mutex{},
 	}
 
-	server := New(logger, listener).
+	server := New(logger, listener, func(_ context.Context, _ []byte) []byte {
+		return []byte("test")
+	}).
 		WithMaxConn(200).
 		WithMaxMessageSize(4096).
 		WithIdleTimeout(2 * time.Minute)
@@ -127,17 +137,22 @@ func TestWithOptions(t *testing.T) {
 // TestListenLoop tests the listen loop with a mock connection.
 func TestListenLoop(t *testing.T) {
 	logger := zaptest.NewLogger(t)
+	mockRequest := "test request"
+	mockResponse := "test request"
 	mockConn := &MockConn{
 		Mu:          sync.Mutex{},
-		ReadBuffer:  bytes.NewBufferString("test query\n"),
-		WriteBuffer: new(bytes.Buffer),
+		ReadBuffer:  bytes.NewBufferString(mockRequest),
+		WriteBuffer: bytes.NewBufferString(""),
 	}
 	listener := &MockListener{
 		Mu:         sync.Mutex{},
 		AcceptConn: mockConn,
 	}
 
-	server := New(logger, listener)
+	server := New(logger, listener, func(_ context.Context, request []byte) []byte {
+		assert.Equal(t, mockRequest, string(request))
+		return []byte(mockResponse)
+	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -161,9 +176,12 @@ func TestListenLoop(t *testing.T) {
 	isConnClosed := mockConn.Closed
 	defer mockConn.Mu.Unlock()
 
-	if !isConnClosed {
-		t.Error("Expected connection to be closed")
-	}
+	assert.True(t, isConnClosed)
+
+	gotResponse := make([]byte, len(mockResponse))
+	_, err := mockConn.WriteBuffer.Read(gotResponse)
+	require.NoError(t, err)
+	assert.Equal(t, mockResponse, string(gotResponse))
 }
 
 // TestListenLoop_AcceptError tests handling of an error in Accept.
@@ -174,7 +192,9 @@ func TestListenLoop_AcceptError(t *testing.T) {
 		AcceptErr: errors.New("accept error"),
 	}
 
-	server := New(logger, listener)
+	server := New(logger, listener, func(_ context.Context, _ []byte) []byte {
+		return []byte("test")
+	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -198,16 +218,17 @@ func TestListenLoop_AcceptError(t *testing.T) {
 func TestListenLoop_ContextCanceled(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 	mockConn := &MockConn{
-		Mu:          sync.Mutex{},
-		ReadBuffer:  bytes.NewBufferString("test query\n"),
-		WriteBuffer: new(bytes.Buffer),
+		Mu:         sync.Mutex{},
+		ReadBuffer: bytes.NewBufferString("test query"),
 	}
 	listener := &MockListener{
 		Mu:         sync.Mutex{},
 		AcceptConn: mockConn,
 	}
 
-	server := New(logger, listener)
+	server := New(logger, listener, func(_ context.Context, _ []byte) []byte {
+		return []byte("test")
+	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -235,21 +256,17 @@ func TestListenLoop_ContextCanceled(t *testing.T) {
 func TestListenLoop_WithPanic(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 	mockConn := &MockConn{
-		Mu:          sync.Mutex{},
-		ReadBuffer:  bytes.NewBufferString("test query\n"),
-		WriteBuffer: new(bytes.Buffer),
+		Mu:         sync.Mutex{},
+		ReadBuffer: bytes.NewBufferString("test query\n"),
 	}
 	listener := &MockListener{
 		Mu:         sync.Mutex{},
 		AcceptConn: mockConn,
 	}
 
-	server := New(logger, listener).WithQueryHandleFunc(
-		func(_ context.Context, conn net.Conn) {
-			defer conn.Close()
-
-			panic("test panic")
-		})
+	server := New(logger, listener, func(_ context.Context, _ []byte) []byte {
+		panic("test panic")
+	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 

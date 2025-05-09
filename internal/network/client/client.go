@@ -38,10 +38,6 @@ func (c *TCPClient) Send(_ context.Context, request []byte) ([]byte, error) {
 		return []byte{}, nil
 	}
 
-	if request[len(request)-1] != '\n' {
-		request = append(request, '\n')
-	}
-
 	if _, err := c.conn.Write(request); err != nil {
 		return []byte{}, fmt.Errorf("failed write conn: %w", err)
 	}

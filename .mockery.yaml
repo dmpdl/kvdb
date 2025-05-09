@@ -1,0 +1,19 @@
+packages:
+  kvdb/internal/database:
+    interfaces:
+      Storage:
+      Compute:
+  kvdb/internal/database/log/writer:
+    interfaces:
+      Segment:
+  kvdb/internal/rpc/query:
+    interfaces:
+      Database:
+  kvdb/internal/database/storage:
+    interfaces:
+      Engine:
+      WAL:
+  kvdb/internal/database/wal:
+    interfaces:
+      LogsWriter:
+      LogsReader:

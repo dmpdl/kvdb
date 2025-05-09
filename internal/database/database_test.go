@@ -5,91 +5,109 @@ import (
 	"errors"
 	"testing"
 
-	"kvdb/internal/database/mocks"
-	"kvdb/internal/model"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
 
 func TestDatabase_RunCommand_OK(t *testing.T) {
 	tests := []struct {
-		name           string
-		rawQuery       string
-		parseResult    model.Query
-		parseError     error
-		execResult     string
-		execError      error
-		expectedOutput string
+		name        string
+		rawQuery    string
+		parseResult Query
+		parseError  error
+		execResult  string
+		execErr     error
+		wantErr     string
+		wantResult  string
 	}{
 		{
 			name:     "valid GET command",
 			rawQuery: "get key",
-			parseResult: model.Query{
-				Command: model.CommandGET,
+			parseResult: Query{
+				Command: CommandGET,
 				Args:    []string{"key"},
 			},
-			parseError:     nil,
-			execResult:     "value",
-			execError:      nil,
-			expectedOutput: "value",
+			execResult: "value",
+			wantResult: "value",
 		},
 		{
 			name:     "valid SET command",
 			rawQuery: "set key value",
-			parseResult: model.Query{
-				Command: model.CommandSET,
+			parseResult: Query{
+				Command: CommandSET,
 				Args:    []string{"key", "value"},
 			},
-			parseError:     nil,
-			execResult:     messageOK,
-			execError:      nil,
-			expectedOutput: messageOK,
+			execResult: messageOK,
+			wantResult: messageOK,
 		},
 		{
 			name:     "valid DEL command",
 			rawQuery: "del key",
-			parseResult: model.Query{
-				Command: model.CommandDEL,
+			parseResult: Query{
+				Command: CommandDEL,
 				Args:    []string{"key"},
 			},
-			parseError:     nil,
-			execResult:     messageOK,
-			execError:      nil,
-			expectedOutput: messageOK,
+			execResult: messageOK,
+			wantResult: messageOK,
 		},
 		{
-			name:           "parse error",
-			rawQuery:       "invalid query",
-			parseResult:    model.Query{},
-			parseError:     errors.New("parse error"),
-			execResult:     "",
-			execError:      nil,
-			expectedOutput: "failed parse query: parse error",
+			name:        "parse error",
+			rawQuery:    "invalid query",
+			parseResult: Query{},
+			parseError:  errors.New("parse error"),
+			wantErr:     "parse error",
+		},
+		{
+			name:     "GET storage error",
+			rawQuery: "get key",
+			parseResult: Query{
+				Command: CommandGET,
+				Args:    []string{"key"},
+			},
+			execErr: errors.New("some error"),
+			wantErr: "some error",
+		},
+		{
+			name:     "SET storage error",
+			rawQuery: "set key value",
+			parseResult: Query{
+				Command: CommandSET,
+				Args:    []string{"key", "value"},
+			},
+			execErr: errors.New("some error"),
+			wantErr: "some error",
+		},
+		{
+			name:     "DEL storage error",
+			rawQuery: "del key",
+			parseResult: Query{
+				Command: CommandDEL,
+				Args:    []string{"key"},
+			},
+			execErr: errors.New("some error"),
+			wantErr: "some error",
 		},
 		{
 			name:     "unknown command",
 			rawQuery: "unknown key",
-			parseResult: model.Query{
-				Command: model.CommandUNK,
+			parseResult: Query{
+				Command: CommandUNK,
 				Args:    []string{"key"},
 			},
-			parseError:     nil,
-			execResult:     "",
-			execError:      nil,
-			expectedOutput: ErrUnknownCommand.Error(),
+			wantErr: ErrUnknownCommand.Error(),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Создаем mock compute
-			mockCompute := mocks.NewCompute(t)
+			mockCompute := NewMockCompute(t)
 			mockCompute.On("Parse", tt.rawQuery).Return(tt.parseResult, tt.parseError)
 
 			// Создаем mock storage
-			mockStorage := mocks.NewStorage(t)
+			mockStorage := NewMockStorage(t)
 
 			// Создаем логгер
 			logger := zap.NewNop()
@@ -99,19 +117,24 @@ func TestDatabase_RunCommand_OK(t *testing.T) {
 
 			// Настраиваем mock storage в зависимости от команды
 			switch tt.parseResult.Command {
-			case model.CommandGET:
-				mockStorage.On("Get", mock.Anything, tt.parseResult.Args[0]).Return(tt.execResult, true)
-			case model.CommandSET:
-				mockStorage.On("Set", mock.Anything, tt.parseResult.Args[0], tt.parseResult.Args[1]).Return()
-			case model.CommandDEL:
-				mockStorage.On("Del", mock.Anything, tt.parseResult.Args[0]).Return()
+			case CommandGET:
+				mockStorage.EXPECT().Get(mock.Anything, tt.parseResult.Args[0]).Return(tt.execResult, tt.execErr)
+			case CommandSET:
+				mockStorage.EXPECT().Set(mock.Anything, tt.parseResult.Args[0], tt.parseResult.Args[1]).Return(tt.execErr)
+			case CommandDEL:
+				mockStorage.EXPECT().Del(mock.Anything, tt.parseResult.Args[0]).Return(tt.execErr)
 			}
 
 			// Выполняем команду
-			output := db.RunCommand(context.Background(), tt.rawQuery)
+			output, err := db.RunCommand(context.Background(), tt.rawQuery)
 
 			// Проверяем результат
-			assert.Equal(t, tt.expectedOutput, output, "unexpected output")
+			if len(tt.wantErr) != 0 {
+				require.Error(t, err, tt.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+			assert.Equal(t, tt.wantResult, output, "unexpected output")
 
 			// Проверяем, что моки были вызваны
 			mockCompute.AssertExpectations(t)

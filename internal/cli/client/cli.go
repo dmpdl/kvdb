@@ -44,7 +44,7 @@ func Run(ctx context.Context, input Reader, client Client) {
 
 		output, err := client.Send(ctx, []byte(request))
 		if err != nil {
-			fmt.Println("failed send")
+			fmt.Println("failed send", err)
 		}
 
 		fmt.Println(">", string(output))

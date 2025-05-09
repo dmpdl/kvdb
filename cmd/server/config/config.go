@@ -2,16 +2,22 @@ package config
 
 import (
 	"fmt"
-	"kvdb/internal/compute"
-	"kvdb/internal/database"
-	"kvdb/internal/network/server"
-	"kvdb/internal/rpc/query"
-	"kvdb/internal/storage/inmemory"
 	"net"
 	"os"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+
+	"kvdb/internal/database"
+	"kvdb/internal/database/compute"
+	"kvdb/internal/database/engine/inmemory"
+	"kvdb/internal/database/fileio"
+	"kvdb/internal/database/log/reader"
+	"kvdb/internal/database/log/writer"
+	"kvdb/internal/database/storage"
+	"kvdb/internal/database/wal"
+	"kvdb/internal/network/server"
+	"kvdb/internal/rpc/query"
 
 	serverConfig "kvdb/internal/config/server"
 )
@@ -57,10 +63,39 @@ func InitLogger(config *serverConfig.Config) (*zap.Logger, error) {
 	return logger, nil
 }
 
-func InitDatabase(logger *zap.Logger) *database.Database {
+func InitDatabase(storage *storage.Storage, logger *zap.Logger) *database.Database {
 	compute := compute.New()
-	storage := inmemory.New()
-	return database.New(logger, compute, storage)
+	return database.New(cloneLogger(logger, "database"), compute, storage)
+}
+
+func InitStorage(logger *zap.Logger, wal *wal.WAL) *storage.Storage {
+	engine := inmemory.New()
+	opts := []storage.Option{}
+	if wal != nil {
+		opts = append(opts, storage.WithWAL(wal))
+	}
+	storage, err := storage.New(engine, opts...)
+	if err != nil {
+		logger.Fatal("failed init storage", zap.Error(err))
+	}
+
+	return storage
+}
+
+func InitWALOptional(conf *serverConfig.Config, logger *zap.Logger) *wal.WAL {
+	if conf.WAL == nil {
+		return nil
+	}
+
+	logsWriter := writer.New(
+		fileio.NewSegment(conf.WAL.DataDirectory, conf.WAL.MaxSegmentSizeBytes))
+	logsReader := reader.New(
+		fileio.NewSegmentProcessor(conf.WAL.DataDirectory),
+	)
+
+	return wal.New(logsWriter, logsReader, cloneLogger(logger, "wal")).
+		WithFlushingBatchLength(conf.WAL.FlushingBatchLength).
+		WithFlushingBatchTimeout(conf.WAL.FlushingBatchTimeout)
 }
 
 func InitServer(conf *serverConfig.Config, logger *zap.Logger, db *database.Database) (*server.TCPServer, error) {
@@ -69,13 +104,16 @@ func InitServer(conf *serverConfig.Config, logger *zap.Logger, db *database.Data
 		return nil, err
 	}
 
-	queryHandler := query.New(db, logger)
+	queryHandler := query.New(db)
 
-	tcpServer := server.New(logger, listener).
+	tcpServer := server.New(cloneLogger(logger, "server"), listener, queryHandler.Handle).
 		WithMaxConn(conf.Network.MaxConnections).
 		WithMaxMessageSize(conf.Network.MaxMessageSizeBytes).
-		WithIdleTimeout(conf.Network.IdleTimeout).
-		WithQueryHandleFunc(queryHandler.Handle)
+		WithIdleTimeout(conf.Network.IdleTimeout)
 
 	return tcpServer, nil
+}
+
+func cloneLogger(logger *zap.Logger, name string) *zap.Logger {
+	return logger.With(zap.String("me", name))
 }

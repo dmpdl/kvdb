@@ -7,7 +7,7 @@ import (
 )
 
 type executor interface {
-	RunCommand(ctx context.Context, rawQuery string) string
+	RunCommand(ctx context.Context, rawQuery string) (string, error)
 }
 
 type reader interface {
@@ -40,8 +40,8 @@ func Run(ctx context.Context, input reader, exec executor) {
 			break
 		}
 
-		output := exec.RunCommand(ctx, rawQuery)
+		output, err := exec.RunCommand(ctx, rawQuery)
 
-		fmt.Println(">", output)
+		fmt.Println(">", output, err.Error())
 	}
 }

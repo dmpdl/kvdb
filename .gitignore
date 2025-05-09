@@ -1,1 +1,4 @@
-log
+.wal
+.log
+coverage.html
+coverage.out

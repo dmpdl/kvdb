@@ -2,7 +2,7 @@ package compute
 
 import (
 	"errors"
-	"kvdb/internal/model"
+	"kvdb/internal/database"
 	"testing"
 )
 
@@ -10,14 +10,14 @@ func TestParse(t *testing.T) {
 	tests := []struct {
 		name        string
 		query       string
-		expected    model.Query
+		expected    database.Query
 		expectedErr error
 	}{
 		{
 			name:  "valid GET command",
 			query: `get key`,
-			expected: model.Query{
-				Command: model.CommandGET,
+			expected: database.Query{
+				Command: database.CommandGET,
 				Args:    []string{"key"},
 			},
 			expectedErr: nil,
@@ -25,8 +25,8 @@ func TestParse(t *testing.T) {
 		{
 			name:  "valid SET command",
 			query: `set key value`,
-			expected: model.Query{
-				Command: model.CommandSET,
+			expected: database.Query{
+				Command: database.CommandSET,
 				Args:    []string{"key", "value"},
 			},
 			expectedErr: nil,
@@ -34,8 +34,8 @@ func TestParse(t *testing.T) {
 		{
 			name:  "valid DEL command",
 			query: `del key`,
-			expected: model.Query{
-				Command: model.CommandDEL,
+			expected: database.Query{
+				Command: database.CommandDEL,
 				Args:    []string{"key"},
 			},
 			expectedErr: nil,
@@ -43,31 +43,31 @@ func TestParse(t *testing.T) {
 		{
 			name:        "empty command",
 			query:       ``,
-			expected:    model.Query{},
+			expected:    database.Query{},
 			expectedErr: ErrInvalidQuery,
 		},
 		{
 			name:        "unknown command",
 			query:       `unknown key`,
-			expected:    model.Query{},
+			expected:    database.Query{},
 			expectedErr: ErrInvalidQuery,
 		},
 		{
 			name:        "invalid GET args",
 			query:       `get key extra`,
-			expected:    model.Query{},
+			expected:    database.Query{},
 			expectedErr: ErrInvalidArgs,
 		},
 		{
 			name:        "invalid SET args",
 			query:       `set key`,
-			expected:    model.Query{},
+			expected:    database.Query{},
 			expectedErr: ErrInvalidArgs,
 		},
 		{
 			name:        "invalid DEL args",
 			query:       `del key extra`,
-			expected:    model.Query{},
+			expected:    database.Query{},
 			expectedErr: ErrInvalidArgs,
 		},
 	}
@@ -103,31 +103,31 @@ func TestMapCommand(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
-		expected model.Command
+		expected database.Command
 		ok       bool
 	}{
 		{
 			name:     "valid GET command",
 			input:    "get",
-			expected: model.CommandGET,
+			expected: database.CommandGET,
 			ok:       true,
 		},
 		{
 			name:     "valid SET command",
 			input:    "set",
-			expected: model.CommandSET,
+			expected: database.CommandSET,
 			ok:       true,
 		},
 		{
 			name:     "valid DEL command",
 			input:    "del",
-			expected: model.CommandDEL,
+			expected: database.CommandDEL,
 			ok:       true,
 		},
 		{
 			name:     "unknown command",
 			input:    "unknown",
-			expected: model.CommandUNK,
+			expected: database.CommandUNK,
 			ok:       false,
 		},
 	}
@@ -150,49 +150,49 @@ func TestMapCommand(t *testing.T) {
 func TestValidateArgs(t *testing.T) {
 	tests := []struct {
 		name        string
-		command     model.Command
+		command     database.Command
 		args        []string
 		expectedErr error
 	}{
 		{
 			name:        "valid GET args",
-			command:     model.CommandGET,
+			command:     database.CommandGET,
 			args:        []string{"key"},
 			expectedErr: nil,
 		},
 		{
 			name:        "invalid GET args",
-			command:     model.CommandGET,
+			command:     database.CommandGET,
 			args:        []string{"key", "extra"},
 			expectedErr: ErrInvalidArgs,
 		},
 		{
 			name:        "valid SET args",
-			command:     model.CommandSET,
+			command:     database.CommandSET,
 			args:        []string{"key", "value"},
 			expectedErr: nil,
 		},
 		{
 			name:        "invalid SET args",
-			command:     model.CommandSET,
+			command:     database.CommandSET,
 			args:        []string{"key"},
 			expectedErr: ErrInvalidArgs,
 		},
 		{
 			name:        "valid DEL args",
-			command:     model.CommandDEL,
+			command:     database.CommandDEL,
 			args:        []string{"key"},
 			expectedErr: nil,
 		},
 		{
 			name:        "invalid DEL args",
-			command:     model.CommandDEL,
+			command:     database.CommandDEL,
 			args:        []string{"key", "extra"},
 			expectedErr: ErrInvalidArgs,
 		},
 		{
 			name:        "unknown command",
-			command:     model.CommandUNK,
+			command:     database.CommandUNK,
 			args:        []string{"key"},
 			expectedErr: ErrUnknownCommand,
 		},

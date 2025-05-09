@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"kvdb/internal/model"
 
 	"go.uber.org/zap"
 )
@@ -12,6 +11,9 @@ import (
 const (
 	messageOK         = "ok"
 	messageEmptyValue = "nil"
+	argsLenCommandGet = 1
+	argsLenCommandSet = 2
+	argsLenCommandDel = 1
 )
 
 var (
@@ -19,47 +21,46 @@ var (
 	ErrInvalidArgs    = errors.New("invalid arguments")
 )
 
-//go:generate mockery --name compute --exported --case underscore --with-expecter
-type compute interface {
-	Parse(query string) (model.Query, error)
+type Compute interface {
+	Parse(query string) (Query, error)
 }
 
-//go:generate mockery --name storage --exported --case underscore --with-expecter
-type storage interface {
-	Get(ctx context.Context, key string) (string, bool)
-	Set(ctx context.Context, key, value string)
-	Del(ctx context.Context, key string)
+type Storage interface {
+	Get(ctx context.Context, key string) (string, error)
+	Set(ctx context.Context, key, value string) error
+	Del(ctx context.Context, key string) error
 }
 
 type Database struct {
 	logger      *zap.Logger
-	compute     compute
-	storage     storage
-	commandsMap map[model.Command]commandExecFunc
+	compute     Compute
+	storage     Storage
+	commandsMap map[Command]commandExecFunc
 }
 
-type commandExecFunc func(ctx context.Context, query model.Query) (string, error)
+type commandExecFunc func(ctx context.Context, query Query) (string, error)
 
 func New(
 	logger *zap.Logger,
-	compute compute,
-	storage storage,
+	compute Compute,
+	storage Storage,
 ) *Database {
 	db := &Database{
 		logger:  logger,
 		compute: compute,
 		storage: storage,
 	}
-	db.commandsMap = map[model.Command]commandExecFunc{
-		model.CommandGET: db.execGET,
-		model.CommandSET: db.execSET,
-		model.CommandDEL: db.execDEL,
+
+	db.commandsMap = map[Command]commandExecFunc{
+		CommandGET: db.execGET,
+		CommandSET: db.execSET,
+		CommandDEL: db.execDEL,
 	}
 
 	return db
 }
 
-func (db *Database) RunCommand(ctx context.Context, rawQuery string) string {
+func (db *Database) RunCommand(ctx context.Context, rawQuery string) (string, error) {
 	zapArgs := []zap.Field{
 		zap.String("raw_query", rawQuery),
 	}
@@ -69,53 +70,59 @@ func (db *Database) RunCommand(ctx context.Context, rawQuery string) string {
 	if err != nil {
 		zapArgs = append(zapArgs, zap.Error(err))
 		db.logger.Error("failed parse query", zapArgs...)
-		return fmt.Sprintf("failed parse query: %s", err.Error())
+		return "", fmt.Errorf("failed parse query: %w", err)
 	}
 
 	exec, ok := db.commandsMap[query.Command]
 	if !ok {
 		zapArgs = append(zapArgs, zap.Error(ErrUnknownCommand))
 		db.logger.Error("unknown command", zapArgs...)
-		return ErrUnknownCommand.Error()
+		return "", ErrUnknownCommand
 	}
 
 	output, err := exec(ctx, query)
 	if err != nil {
 		zapArgs = append(zapArgs, zap.Error(err))
 		db.logger.Error("failed run query", zapArgs...)
-		return fmt.Sprintf("failed run query: %s", err.Error())
+		return "", fmt.Errorf("failed to run query: %w", err)
 	}
 
-	return output
+	return output, nil
 }
 
-func (db *Database) execGET(ctx context.Context, query model.Query) (string, error) {
-	if len(query.Args) != model.CommandGETArgsLen {
-		return "", fmt.Errorf("%w: want %d args", ErrInvalidArgs, model.CommandGETArgsLen)
+func (db *Database) execGET(ctx context.Context, query Query) (string, error) {
+	if len(query.Args) != argsLenCommandGet {
+		return "", fmt.Errorf("%w: key is required", ErrInvalidArgs)
 	}
 
-	value, ok := db.storage.Get(ctx, query.Args[0])
-	if !ok {
-		return messageEmptyValue, nil
+	value, err := db.storage.Get(ctx, query.Args[0])
+	if err != nil {
+		return "", fmt.Errorf("failed exec get: %w", err)
 	}
 
 	return value, nil
 }
 
-func (db *Database) execSET(ctx context.Context, query model.Query) (string, error) {
-	if len(query.Args) != model.CommandSETArgsLen {
-		return "", fmt.Errorf("%w: want %d args", ErrInvalidArgs, model.CommandSETArgsLen)
+func (db *Database) execSET(ctx context.Context, query Query) (string, error) {
+	if len(query.Args) != argsLenCommandSet {
+		return "", fmt.Errorf("%w: key and value are required", ErrInvalidArgs)
 	}
 
-	db.storage.Set(ctx, query.Args[0], query.Args[1])
+	if err := db.storage.Set(ctx, query.Args[0], query.Args[1]); err != nil {
+		return "", fmt.Errorf("failed exec set: %w", err)
+	}
+
 	return messageOK, nil
 }
 
-func (db *Database) execDEL(ctx context.Context, query model.Query) (string, error) {
-	if len(query.Args) != model.CommandDELArgsLen {
-		return "", fmt.Errorf("%w: want %d args", ErrInvalidArgs, model.CommandDELArgsLen)
+func (db *Database) execDEL(ctx context.Context, query Query) (string, error) {
+	if len(query.Args) != argsLenCommandDel {
+		return "", fmt.Errorf("%w: key is required", ErrInvalidArgs)
 	}
 
-	db.storage.Del(ctx, query.Args[0])
+	if err := db.storage.Del(ctx, query.Args[0]); err != nil {
+		return "", fmt.Errorf("failed exec set: %w", err)
+	}
+
 	return messageOK, nil
 }

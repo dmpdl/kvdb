@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"errors"
+	"io"
 	"net"
 	"sync"
 	"time"
@@ -16,25 +18,21 @@ const (
 )
 
 type TCPServer struct {
-	logger   *zap.Logger
-	listener net.Listener
-	handler  handleFunc
-	opts     opts
+	logger     *zap.Logger
+	listener   net.Listener
+	handleFunc handleFunc
+	opts       opts
 }
 
 type opts struct {
 	maxConn             int           // Max number of connections. Default 100.
-	maxMessageSizeBytes uint64        // Max message size in bytes. Default 2Kb.
+	maxMessageSizeBytes int           // Max message size in bytes. Default 2Kb.
 	idleTimeout         time.Duration // Idle timeout. Default 1m.
 }
 
-type handleFunc func(ctx context.Context, conn net.Conn)
+type handleFunc func(ctx context.Context, request []byte) []byte
 
-var dummyHandleFunc handleFunc = func(_ context.Context, conn net.Conn) {
-	defer conn.Close()
-}
-
-func New(logger *zap.Logger, listener net.Listener) *TCPServer {
+func New(logger *zap.Logger, listener net.Listener, handleFunc handleFunc) *TCPServer {
 	return &TCPServer{
 		logger:   logger,
 		listener: listener,
@@ -43,7 +41,7 @@ func New(logger *zap.Logger, listener net.Listener) *TCPServer {
 			maxMessageSizeBytes: defaultMaxMessageSizeBytes,
 			idleTimeout:         defaultIdleTimeout,
 		},
-		handler: dummyHandleFunc,
+		handleFunc: handleFunc,
 	}
 }
 
@@ -52,7 +50,7 @@ func (s *TCPServer) WithMaxConn(maxConn int) *TCPServer {
 	return s
 }
 
-func (s *TCPServer) WithMaxMessageSize(maxMessageSizeBytes uint64) *TCPServer {
+func (s *TCPServer) WithMaxMessageSize(maxMessageSizeBytes int) *TCPServer {
 	s.opts.maxMessageSizeBytes = maxMessageSizeBytes
 	return s
 }
@@ -62,21 +60,26 @@ func (s *TCPServer) WithIdleTimeout(idleTimeout time.Duration) *TCPServer {
 	return s
 }
 
-func (s *TCPServer) WithQueryHandleFunc(handler handleFunc) *TCPServer {
-	s.handler = handler
-	return s
-}
-
 func (s *TCPServer) Listen(ctx context.Context) {
 	wg := sync.WaitGroup{}
-	wg.Add(1)
 
+	s.logger.Info(
+		"start listen loop",
+		zap.String("addr", s.listener.Addr().String()),
+		zap.Int("max_conn", s.opts.maxConn),
+		zap.Int("max_message_size_bytes", s.opts.maxMessageSizeBytes),
+		zap.String("idle_timeout", s.opts.idleTimeout.String()),
+	)
+
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		s.listenLoop(ctx)
 	}()
 
 	<-ctx.Done()
+
+	s.logger.Info("close listener")
 
 	if err := s.listener.Close(); err != nil {
 		s.logger.Error(
@@ -89,14 +92,6 @@ func (s *TCPServer) Listen(ctx context.Context) {
 }
 
 func (s *TCPServer) listenLoop(ctx context.Context) {
-	s.logger.Info(
-		"start serve",
-		zap.String("addr", s.listener.Addr().String()),
-		zap.Int("max_conn", s.opts.maxConn),
-		zap.Uint64("max_message_size_bytes", s.opts.maxMessageSizeBytes),
-		zap.String("idle_timeout", s.opts.idleTimeout.String()),
-	)
-
 	// Limit max concurrent connections.
 	connLimiter := newConnectionLimiter(s.opts.maxConn)
 
@@ -137,12 +132,12 @@ func (s *TCPServer) listenLoop(ctx context.Context) {
 		go func() {
 			defer wg.Done()
 
-			s.wrapConn(ctx, conn, connLimiter)
+			s.handleConn(ctx, conn, connLimiter)
 		}()
 	}
 }
 
-func (s *TCPServer) wrapConn(ctx context.Context, conn net.Conn, connLimiter *connectionLimiter) {
+func (s *TCPServer) handleConn(ctx context.Context, conn net.Conn, connLimiter *connectionLimiter) {
 	defer func() {
 		if err := recover(); err != nil {
 			s.logger.Error(
@@ -151,13 +146,87 @@ func (s *TCPServer) wrapConn(ctx context.Context, conn net.Conn, connLimiter *co
 				zap.Any("panic", err),
 			)
 		}
+
+		if err := conn.Close(); err != nil {
+			s.logger.Warn("failed to close connection", zap.Error(err))
+		}
 	}()
 
 	defer func() {
 		connLimiter.Release()
 	}()
 
-	s.handler(ctx, conn)
+	logger := s.logger.With(zap.String("addr", conn.RemoteAddr().String()))
+	s.handleRequest(ctx, conn, logger)
+}
+
+func (s *TCPServer) handleRequest(ctx context.Context, conn net.Conn, logger *zap.Logger) {
+	// Reuse buffer for requests.
+	request := make([]byte, s.opts.maxMessageSizeBytes)
+
+	for {
+		if err := setReadDeadline(conn, s.opts.idleTimeout); err != nil {
+			s.logger.Warn("failed to set read deadline", zap.Error(err))
+			break
+		}
+
+		count, err := conn.Read(request)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			logger.Warn(
+				"failed to read data",
+				zap.Error(err),
+			)
+			break
+		} else if count == s.opts.maxMessageSizeBytes {
+			logger.Warn(
+				"small buffer size",
+				zap.Int("buffer_size", s.opts.maxMessageSizeBytes),
+			)
+			break
+		}
+
+		if err := setWriteDeadline(conn, s.opts.idleTimeout); err != nil {
+			s.logger.Warn("failed to set write deadline", zap.Error(err))
+			break
+		}
+
+		response := s.handleFunc(ctx, request[:count])
+		if len(response) == 0 {
+			s.logger.Warn("empty response")
+			break
+		}
+
+		if _, err := conn.Write(response); err != nil {
+			s.logger.Warn(
+				"failed to write data",
+				zap.Error(err),
+			)
+			break
+		}
+	}
+}
+
+func setWriteDeadline(conn net.Conn, timeout time.Duration) error {
+	if timeout != 0 {
+		if err := conn.SetWriteDeadline(time.Now().Add(timeout)); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func setReadDeadline(conn net.Conn, timeout time.Duration) error {
+	if timeout != 0 {
+		if err := conn.SetReadDeadline(time.Now().Add(timeout)); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 type connectionLimiter struct {

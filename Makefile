@@ -4,6 +4,11 @@ GO := go
 # Default target
 all: test lint run-database
 
+# Generate codem
+codegen:
+	@echo "Running code generation..."
+	mockery
+
 # Run all tests
 test:
 	@echo "Running all tests..."

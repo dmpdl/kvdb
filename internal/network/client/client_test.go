@@ -62,7 +62,7 @@ func (m *MockConn) SetWriteDeadline(_ time.Time) error {
 // TestSend_Success tests successful sending and receiving of data.
 func TestSend_Success(t *testing.T) {
 	mockConn := &MockConn{
-		ReadBuffer:  bytes.NewBufferString("response\n"),
+		ReadBuffer:  bytes.NewBufferString("response"),
 		WriteBuffer: new(bytes.Buffer),
 	}
 
@@ -72,17 +72,17 @@ func TestSend_Success(t *testing.T) {
 	response, err := client.Send(context.Background(), request)
 	require.NoError(t, err)
 
-	expectedResponse := []byte("response\n")
+	expectedResponse := []byte("response")
 	require.Equal(t, expectedResponse, response)
 
-	expectedRequest := []byte("request\n")
+	expectedRequest := []byte("request")
 	require.Equal(t, expectedRequest, mockConn.WriteBuffer.Bytes())
 }
 
 // TestSend_EmptyRequest tests sending an empty request.
 func TestSend_EmptyRequest(t *testing.T) {
 	mockConn := &MockConn{
-		ReadBuffer:  bytes.NewBufferString("response\n"),
+		ReadBuffer:  bytes.NewBufferString("response"),
 		WriteBuffer: new(bytes.Buffer),
 	}
 
@@ -99,7 +99,7 @@ func TestSend_EmptyRequest(t *testing.T) {
 // TestSend_WriteError tests handling of a write error.
 func TestSend_WriteError(t *testing.T) {
 	mockConn := &MockConn{
-		ReadBuffer:  bytes.NewBufferString("response\n"),
+		ReadBuffer:  bytes.NewBufferString("response"),
 		WriteBuffer: new(bytes.Buffer),
 	}
 
