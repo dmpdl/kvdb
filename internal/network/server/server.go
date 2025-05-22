@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -32,7 +33,7 @@ type opts struct {
 
 type handleFunc func(ctx context.Context, request []byte) []byte
 
-func New(logger *zap.Logger, listener net.Listener, handleFunc handleFunc) *TCPServer {
+func New(logger *zap.Logger, listener net.Listener) *TCPServer {
 	return &TCPServer{
 		logger:   logger,
 		listener: listener,
@@ -41,7 +42,6 @@ func New(logger *zap.Logger, listener net.Listener, handleFunc handleFunc) *TCPS
 			maxMessageSizeBytes: defaultMaxMessageSizeBytes,
 			idleTimeout:         defaultIdleTimeout,
 		},
-		handleFunc: handleFunc,
 	}
 }
 
@@ -60,7 +60,8 @@ func (s *TCPServer) WithIdleTimeout(idleTimeout time.Duration) *TCPServer {
 	return s
 }
 
-func (s *TCPServer) Listen(ctx context.Context) {
+func (s *TCPServer) ListenFunc(ctx context.Context, f func(ctx context.Context, request []byte) []byte) {
+	s.handleFunc = f
 	wg := sync.WaitGroup{}
 
 	s.logger.Info(
@@ -144,6 +145,7 @@ func (s *TCPServer) handleConn(ctx context.Context, conn net.Conn, connLimiter *
 				"panic",
 				zap.String("conn", conn.LocalAddr().String()),
 				zap.Any("panic", err),
+				zap.String("stack", string(debug.Stack())),
 			)
 		}
 

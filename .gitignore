@@ -1,4 +1,4 @@
-.wal
+.wal*
 .log
 coverage.html
 coverage.out

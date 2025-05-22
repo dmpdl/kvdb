@@ -16,14 +16,9 @@ func NewSegmentProcessor(dir string) *SegmentsProcessor {
 }
 
 func (s *SegmentsProcessor) ForEach(action func([]byte) error) error {
-	// Create folder if not exists.
-	if err := os.Mkdir(s.dir, 0755); err != nil && !os.IsExist(err) {
-		return fmt.Errorf("failed mkdir %s: %w", s.dir, err)
-	}
-
-	files, err := os.ReadDir(s.dir)
+	files, err := listFiles(s.dir)
 	if err != nil {
-		return fmt.Errorf("failed to scan directory with segments: %w", err)
+		return fmt.Errorf("failed to list segments: %w", err)
 	}
 
 	for _, file := range files {

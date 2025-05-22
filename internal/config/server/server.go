@@ -12,6 +12,9 @@ import (
 )
 
 const (
+	ReplicationTypeMaster = "master"
+	ReplicationTypeSlave  = "slave"
+
 	// Engine constants.
 	DefaultEngineType = "in_memory"
 
@@ -32,13 +35,19 @@ const (
 	DefaultMaxSegmentSize       = "1KB"
 	DefaultMaxSegmentSizeBytes  = 1024
 	DefaultDataDirectory        = "./dir"
+
+	// Replication constants.
+	DefaultReplicationSyncInterval  = time.Second
+	DefaultReplicationMasterAddress = "127.0.0.1:8085"
 )
 
 type Config struct {
-	Engine  EngineConfig  `yaml:"engine"`
-	Network NetworkConfig `yaml:"network"`
-	Logging LoggingConfig `yaml:"logging"`
-	WAL     *WALConfig    `yaml:"wal,omitempty"`
+	Engine      EngineConfig       `yaml:"engine"`
+	Network     NetworkConfig      `yaml:"network"`
+	Logging     LoggingConfig      `yaml:"logging"`
+	Data        string             `yaml:"data"`
+	WAL         *WALConfig         `yaml:"wal,omitempty"`
+	Replication *ReplicationConfig `yaml:"replication,omitempty"`
 }
 
 type EngineConfig struct {
@@ -63,7 +72,12 @@ type WALConfig struct {
 	FlushingBatchTimeout time.Duration `yaml:"flushing_batch_timeout"`
 	MaxSegmentSize       string        `yaml:"max_segment_size"`
 	MaxSegmentSizeBytes  int           `yaml:"-"`
-	DataDirectory        string        `yaml:"data_directory"`
+}
+
+type ReplicationConfig struct {
+	Type          string        `yaml:"type"`
+	SyncInterval  time.Duration `yaml:"sync_interval,omitempty"`
+	MasterAddress string        `yaml:"master_address"`
 }
 
 func GetDefaultConfig() Config {
@@ -87,7 +101,12 @@ func GetDefaultConfig() Config {
 			FlushingBatchTimeout: DefaultFlushingBatchTimeout,
 			MaxSegmentSize:       DefaultMaxSegmentSize,
 			MaxSegmentSizeBytes:  DefaultMaxSegmentSizeBytes,
-			DataDirectory:        DefaultDataDirectory,
+		},
+		Data: DefaultDataDirectory,
+		Replication: &ReplicationConfig{
+			Type:          ReplicationTypeMaster,
+			SyncInterval:  DefaultReplicationSyncInterval,
+			MasterAddress: DefaultReplicationMasterAddress,
 		},
 	}
 }
@@ -133,8 +152,22 @@ func (c *Config) setDefaults() {
 			c.WAL.MaxSegmentSize = defaultConf.WAL.MaxSegmentSize
 			c.WAL.MaxSegmentSizeBytes = defaultConf.WAL.MaxSegmentSizeBytes
 		}
-		if c.WAL.DataDirectory == "" {
-			c.WAL.DataDirectory = defaultConf.WAL.DataDirectory
+	}
+
+	if c.Data == "" {
+		c.Data = defaultConf.Data
+	}
+
+	// Replication
+	if c.Replication != nil {
+		if c.Replication.Type == "" {
+			c.Replication.Type = defaultConf.Replication.Type
+		}
+		if c.Replication.SyncInterval == 0 {
+			c.Replication.SyncInterval = defaultConf.Replication.SyncInterval
+		}
+		if c.Replication.MasterAddress == "" {
+			c.Replication.MasterAddress = defaultConf.Replication.MasterAddress
 		}
 	}
 }

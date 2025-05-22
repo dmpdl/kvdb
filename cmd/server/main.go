@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"kvdb/cmd/server/config"
+	"kvdb/internal/rpc/query"
 	"os"
 	"os/signal"
 	"sync"
@@ -13,7 +14,7 @@ import (
 )
 
 func main() {
-	configPath := flag.String("config", "etc/server.yaml", "config path")
+	configPath := flag.String("config", "etc/master.yaml", "config path")
 	flag.Parse()
 
 	mainLogger := zap.NewExample()
@@ -33,6 +34,11 @@ func main() {
 		storage = config.InitStorage(logger, wal)
 		db      = config.InitDatabase(storage, logger)
 	)
+
+	replication, err := config.InitReplicationOptional(logger, conf)
+	if err != nil {
+		mainLogger.Fatal("failed init replication", zap.Error(err))
+	}
 
 	tcpServer, err := config.InitServer(conf, logger, db)
 	if err != nil {
@@ -56,14 +62,31 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		tcpServer.Listen(ctx)
+		tcpServer.ListenFunc(ctx, query.New(db).Handle)
 	}()
 
 	// Start WAL flushing
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+
+		if wal == nil {
+			return
+		}
+
 		wal.RunFlushing(ctx)
+	}()
+
+	// Start Replication sync
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		if replication == nil {
+			return
+		}
+
+		replication.Run(ctx)
 	}()
 
 	wg.Wait()

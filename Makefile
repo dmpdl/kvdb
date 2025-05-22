@@ -32,6 +32,11 @@ run-database:
 	@echo "Building and running the database..."
 	$(GO) run cmd/server/main.go
 
+# Build and run the database
+run-database-slave:
+	@echo "Building and running the slave database..."
+	$(GO) run cmd/server/main.go -config ./etc/slave.yaml
+
 # Build and run the database client
 run-client:
 	@echo "Building and running database client..."

@@ -94,9 +94,7 @@ func TestNewTCPServer(t *testing.T) {
 		Mu: sync.Mutex{},
 	}
 
-	server := New(logger, listener, func(_ context.Context, _ []byte) []byte {
-		return []byte("test")
-	})
+	server := New(logger, listener)
 
 	if server.opts.maxConn != defaultMaxConn {
 		t.Errorf("Expected maxConn %d, got %d", defaultMaxConn, server.opts.maxConn)
@@ -116,9 +114,7 @@ func TestWithOptions(t *testing.T) {
 		Mu: sync.Mutex{},
 	}
 
-	server := New(logger, listener, func(_ context.Context, _ []byte) []byte {
-		return []byte("test")
-	}).
+	server := New(logger, listener).
 		WithMaxConn(200).
 		WithMaxMessageSize(4096).
 		WithIdleTimeout(2 * time.Minute)
@@ -149,10 +145,7 @@ func TestListenLoop(t *testing.T) {
 		AcceptConn: mockConn,
 	}
 
-	server := New(logger, listener, func(_ context.Context, request []byte) []byte {
-		assert.Equal(t, mockRequest, string(request))
-		return []byte(mockResponse)
-	})
+	server := New(logger, listener)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -161,7 +154,10 @@ func TestListenLoop(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		server.Listen(ctx)
+		server.ListenFunc(ctx, func(_ context.Context, request []byte) []byte {
+			assert.Equal(t, mockRequest, string(request))
+			return []byte(mockResponse)
+		})
 	}()
 
 	// Wait for the server to start
@@ -192,9 +188,7 @@ func TestListenLoop_AcceptError(t *testing.T) {
 		AcceptErr: errors.New("accept error"),
 	}
 
-	server := New(logger, listener, func(_ context.Context, _ []byte) []byte {
-		return []byte("test")
-	})
+	server := New(logger, listener)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -203,7 +197,9 @@ func TestListenLoop_AcceptError(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		server.Listen(ctx)
+		server.ListenFunc(ctx, func(_ context.Context, _ []byte) []byte {
+			return []byte("test")
+		})
 	}()
 
 	// Wait for the server to start
@@ -226,9 +222,7 @@ func TestListenLoop_ContextCanceled(t *testing.T) {
 		AcceptConn: mockConn,
 	}
 
-	server := New(logger, listener, func(_ context.Context, _ []byte) []byte {
-		return []byte("test")
-	})
+	server := New(logger, listener)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -236,7 +230,9 @@ func TestListenLoop_ContextCanceled(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		server.Listen(ctx)
+		server.ListenFunc(ctx, func(_ context.Context, _ []byte) []byte {
+			return []byte("test")
+		})
 	}()
 
 	// Wait for the server to start
@@ -264,9 +260,7 @@ func TestListenLoop_WithPanic(t *testing.T) {
 		AcceptConn: mockConn,
 	}
 
-	server := New(logger, listener, func(_ context.Context, _ []byte) []byte {
-		panic("test panic")
-	})
+	server := New(logger, listener)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -274,7 +268,9 @@ func TestListenLoop_WithPanic(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		server.Listen(ctx)
+		server.ListenFunc(ctx, func(_ context.Context, _ []byte) []byte {
+			panic("test panic")
+		})
 	}()
 
 	time.Sleep(500 * time.Microsecond)

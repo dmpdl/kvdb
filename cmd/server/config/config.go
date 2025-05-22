@@ -1,6 +1,8 @@
 package config
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -14,13 +16,19 @@ import (
 	"kvdb/internal/database/fileio"
 	"kvdb/internal/database/log/reader"
 	"kvdb/internal/database/log/writer"
+	"kvdb/internal/database/replication/master"
+	"kvdb/internal/database/replication/slave"
 	"kvdb/internal/database/storage"
 	"kvdb/internal/database/wal"
+	"kvdb/internal/network/client"
 	"kvdb/internal/network/server"
-	"kvdb/internal/rpc/query"
 
 	serverConfig "kvdb/internal/config/server"
 )
+
+type Replication interface {
+	Run(ctx context.Context)
+}
 
 func LoadConfig(configPath string) (*serverConfig.Config, error) {
 	f, err := os.Open(configPath)
@@ -88,9 +96,9 @@ func InitWALOptional(conf *serverConfig.Config, logger *zap.Logger) *wal.WAL {
 	}
 
 	logsWriter := writer.New(
-		fileio.NewSegment(conf.WAL.DataDirectory, conf.WAL.MaxSegmentSizeBytes))
+		fileio.NewSegment(conf.Data, conf.WAL.MaxSegmentSizeBytes))
 	logsReader := reader.New(
-		fileio.NewSegmentProcessor(conf.WAL.DataDirectory),
+		fileio.NewSegmentProcessor(conf.Data),
 	)
 
 	return wal.New(logsWriter, logsReader, cloneLogger(logger, "wal")).
@@ -104,14 +112,52 @@ func InitServer(conf *serverConfig.Config, logger *zap.Logger, db *database.Data
 		return nil, err
 	}
 
-	queryHandler := query.New(db)
-
-	tcpServer := server.New(cloneLogger(logger, "server"), listener, queryHandler.Handle).
+	tcpServer := server.New(cloneLogger(logger, "server"), listener).
 		WithMaxConn(conf.Network.MaxConnections).
 		WithMaxMessageSize(conf.Network.MaxMessageSizeBytes).
 		WithIdleTimeout(conf.Network.IdleTimeout)
 
 	return tcpServer, nil
+}
+
+func InitReplicationOptional(logger *zap.Logger, conf *serverConfig.Config) (Replication, error) {
+	if conf.Replication == nil {
+		return nil, nil
+	}
+
+	if conf.WAL == nil && conf.Replication.Type == serverConfig.ReplicationTypeMaster {
+		return nil, errors.New("wal is require in master mode")
+	}
+
+	if conf.WAL != nil && conf.Replication.Type == serverConfig.ReplicationTypeSlave {
+		return nil, errors.New("disable wal in slave mode")
+	}
+
+	segmentsReader := fileio.NewSegmentsReader(conf.Data)
+
+	if conf.Replication.Type == serverConfig.ReplicationTypeMaster {
+		listener, err := net.Listen("tcp", conf.Replication.MasterAddress)
+		if err != nil {
+			return nil, fmt.Errorf("failed to listen master address: %w", err)
+		}
+
+		server := server.New(cloneLogger(logger, "master-replica"), listener)
+
+		return master.New(logger, server, segmentsReader), nil
+	}
+
+	if conf.Replication.Type == serverConfig.ReplicationTypeSlave {
+		conn, err := net.Dial("tcp", conf.Replication.MasterAddress)
+		if err != nil {
+			return nil, err
+		}
+
+		client := client.New(conn)
+
+		return slave.New(cloneLogger(logger, "slave-replica"), conf.Replication.SyncInterval, client, segmentsReader), nil
+	}
+
+	return nil, errors.New("replication type should be master or slave")
 }
 
 func cloneLogger(logger *zap.Logger, name string) *zap.Logger {
