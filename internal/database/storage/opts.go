@@ -7,3 +7,9 @@ func WithWAL(wal WAL) Option {
 		storage.wal = wal
 	}
 }
+
+func WithReplication(replication Replication) Option {
+	return func(storage *Storage) {
+		storage.replication = replication
+	}
+}

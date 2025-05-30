@@ -34,16 +34,17 @@ func (m *Master) Run(ctx context.Context) {
 	m.tcpServer.ListenFunc(ctx, m.handleFunc)
 }
 
+func (m *Master) Wait() {}
+
 // handleFunc read next segment and send its data.
 // If there is no next segment - send current segment and empty data.
 func (m *Master) handleFunc(ctx context.Context, request []byte) []byte {
 	var replicationRequest replication.Request
 	if err := replication.Decode(&replicationRequest, request); err != nil {
-		m.logger.Error("failed to decode request", zap.Error(err))
-		return replication.ErrResponse(err)
+		return replication.ErrResponse(fmt.Errorf("failed to decode request: %w", err))
 	}
 
-	segment, segmentData, err := m.segmentReader.ReadNextSegment(replicationRequest.PreviousSegment)
+	segment, segmentData, err := m.segmentReader.ReadNextSegment(replicationRequest.PrevSegment)
 	if err != nil {
 		m.logger.Error("failed to read next segment", zap.Error(err))
 		return replication.ErrResponse(fmt.Errorf("failed to read next segment: %w", err))
@@ -51,7 +52,7 @@ func (m *Master) handleFunc(ctx context.Context, request []byte) []byte {
 
 	if len(segment) == 0 {
 		return replication.Encode(&replication.Response{
-			Segment: segment,
+			Segment: replicationRequest.PrevSegment,
 		})
 	}
 

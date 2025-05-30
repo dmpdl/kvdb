@@ -28,6 +28,7 @@ import (
 
 type Replication interface {
 	Run(ctx context.Context)
+	Wait()
 }
 
 func LoadConfig(configPath string) (*serverConfig.Config, error) {
@@ -96,9 +97,9 @@ func InitWALOptional(conf *serverConfig.Config, logger *zap.Logger) *wal.WAL {
 	}
 
 	logsWriter := writer.New(
-		fileio.NewSegment(conf.Data, conf.WAL.MaxSegmentSizeBytes))
+		fileio.NewSegment(conf.DataDir, conf.WAL.MaxSegmentSizeBytes))
 	logsReader := reader.New(
-		fileio.NewSegmentProcessor(conf.Data),
+		fileio.NewSegmentProcessor(conf.DataDir),
 	)
 
 	return wal.New(logsWriter, logsReader, cloneLogger(logger, "wal")).
@@ -133,7 +134,8 @@ func InitReplicationOptional(logger *zap.Logger, conf *serverConfig.Config) (Rep
 		return nil, errors.New("disable wal in slave mode")
 	}
 
-	segmentsReader := fileio.NewSegmentsReader(conf.Data)
+	segmentsReader := fileio.NewSegmentsReader(conf.DataDir)
+	segmentsWriter := fileio.NewSegmentWriter(conf.DataDir)
 
 	if conf.Replication.Type == serverConfig.ReplicationTypeMaster {
 		listener, err := net.Listen("tcp", conf.Replication.MasterAddress)
@@ -154,7 +156,13 @@ func InitReplicationOptional(logger *zap.Logger, conf *serverConfig.Config) (Rep
 
 		client := client.New(conn)
 
-		return slave.New(cloneLogger(logger, "slave-replica"), conf.Replication.SyncInterval, client, segmentsReader), nil
+		return slave.New(
+			cloneLogger(logger, "slave-replica"),
+			conf.Replication.SyncInterval,
+			client,
+			segmentsReader,
+			segmentsWriter,
+		), nil
 	}
 
 	return nil, errors.New("replication type should be master or slave")

@@ -45,7 +45,7 @@ type Config struct {
 	Engine      EngineConfig       `yaml:"engine"`
 	Network     NetworkConfig      `yaml:"network"`
 	Logging     LoggingConfig      `yaml:"logging"`
-	Data        string             `yaml:"data"`
+	DataDir     string             `yaml:"data_dir"`
 	WAL         *WALConfig         `yaml:"wal,omitempty"`
 	Replication *ReplicationConfig `yaml:"replication,omitempty"`
 }
@@ -102,7 +102,7 @@ func GetDefaultConfig() Config {
 			MaxSegmentSize:       DefaultMaxSegmentSize,
 			MaxSegmentSizeBytes:  DefaultMaxSegmentSizeBytes,
 		},
-		Data: DefaultDataDirectory,
+		DataDir: DefaultDataDirectory,
 		Replication: &ReplicationConfig{
 			Type:          ReplicationTypeMaster,
 			SyncInterval:  DefaultReplicationSyncInterval,
@@ -154,8 +154,8 @@ func (c *Config) setDefaults() {
 		}
 	}
 
-	if c.Data == "" {
-		c.Data = defaultConf.Data
+	if c.DataDir == "" {
+		c.DataDir = defaultConf.DataDir
 	}
 
 	// Replication

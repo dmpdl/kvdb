@@ -77,7 +77,7 @@ func main() {
 		wal.RunFlushing(ctx)
 	}()
 
-	// Start Replication sync
+	// Start Replication process
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -87,6 +87,7 @@ func main() {
 		}
 
 		replication.Run(ctx)
+		replication.Wait()
 	}()
 
 	wg.Wait()

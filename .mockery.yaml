@@ -17,3 +17,12 @@ packages:
     interfaces:
       LogsWriter:
       LogsReader:
+  kvdb/internal/database/replication/master:
+    interfaces:
+      TCPServer:
+      SegmentsReader:
+  kvdb/internal/database/replication/slave:
+    interfaces:
+      SegmentsReader:
+      SegmentsWriter:
+      Client:

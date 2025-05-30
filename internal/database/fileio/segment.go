@@ -40,7 +40,7 @@ func (s *Segment) Write(data []byte) error {
 }
 
 func (s *Segment) rotateSegment() error {
-	segmentName := fmt.Sprintf("%s/wal_%d.log", s.dir, now().UnixMilli())
+	segmentName := NewSegmentPath(s.dir)
 	file, err := CreateFile(segmentName)
 	if err != nil {
 		return err
@@ -49,4 +49,12 @@ func (s *Segment) rotateSegment() error {
 	s.file = file
 	s.size = 0
 	return nil
+}
+
+func NewSegmentPath(dir string) string {
+	return fmt.Sprintf("%s/wal_%d.log", dir, now().UnixMilli())
+}
+
+func SegmentPath(dir string, segment string) string {
+	return fmt.Sprintf("%s/%s", dir, segment)
 }

@@ -7,7 +7,7 @@ import (
 )
 
 type Request struct {
-	PreviousSegment string
+	PrevSegment string
 }
 
 type Response struct {
@@ -30,7 +30,7 @@ func Decode[ProtocolObject Request | Response](object *ProtocolObject, data []by
 	buffer := bytes.NewBuffer(data)
 	decoder := gob.NewDecoder(buffer)
 	if err := decoder.Decode(&object); err != nil {
-		return fmt.Errorf("failed to decode object: %w", err)
+		return err
 	}
 
 	return nil
@@ -40,6 +40,7 @@ func ErrResponse(err error) []byte {
 	replicationResponse := Response{
 		Error: err.Error(),
 	}
+	fmt.Println("err", replicationResponse.Error)
 
 	return Encode(&replicationResponse)
 }

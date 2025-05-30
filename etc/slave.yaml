@@ -9,7 +9,7 @@ logging:
   level: "info"
   # output: "./.log/output.log"
   output: "stdout"
-data: "./.wal"
+data_dir: "./.wal_slave"
 replication:
   type: "slave"
   master_address: "127.0.0.1:8085"

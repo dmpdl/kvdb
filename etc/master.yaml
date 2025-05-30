@@ -13,7 +13,7 @@ wal:
   flushing_batch_length: 100
   flushing_batch_timeout: "10ms"
   max_segment_size: "1KB"
-data: "./.wal_master"
+data_dir: "./.wal_master"
 replication:
   type: "master"
   master_address: "127.0.0.1:8085"

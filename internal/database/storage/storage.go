@@ -8,6 +8,7 @@ import (
 	"kvdb/internal/database"
 	dwal "kvdb/internal/database/dummy/wal"
 	"sort"
+	"sync"
 )
 
 type ctxKey string
@@ -24,6 +25,10 @@ type Engine interface {
 	Del(ctx context.Context, key string)
 }
 
+type Replication interface {
+	GetStream() <-chan database.Segment
+}
+
 type WAL interface {
 	Set(ctx context.Context, key, value string) conc.FutureError
 	Del(ctx context.Context, key string) conc.FutureError
@@ -31,9 +36,11 @@ type WAL interface {
 }
 
 type Storage struct {
-	engine Engine
-	wal    WAL
-	idgen  *IDGen
+	engine      Engine
+	wal         WAL
+	idgen       *IDGen
+	replication Replication
+	gracefulWg  sync.WaitGroup
 }
 
 func New(engine Engine, options ...Option) (*Storage, error) {
@@ -55,7 +62,26 @@ func New(engine Engine, options ...Option) (*Storage, error) {
 	lastLSN := storage.applyData(logs)
 	storage.idgen = NewIDGen(lastLSN)
 
+	if storage.replication != nil {
+		storage.gracefulWg.Add(1)
+		go func() {
+			defer storage.gracefulWg.Done()
+
+			storage.runReplication(storage.replication.GetStream())
+		}()
+	}
+
 	return storage, nil
+}
+
+func (s *Storage) Wait() {
+	s.gracefulWg.Wait()
+}
+
+func (s *Storage) runReplication(ch <-chan database.Segment) {
+	for segment := range ch {
+		s.applyData(segment.Logs)
+	}
 }
 
 func (s *Storage) applyData(logs []database.WALRecord) int64 {
